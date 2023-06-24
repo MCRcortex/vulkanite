@@ -1,0 +1,205 @@
+package me.cortex.vulkanite.lib.memory;
+
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.Struct;
+import org.lwjgl.util.vma.*;
+import org.lwjgl.vulkan.*;
+
+import java.nio.LongBuffer;
+
+import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
+import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.util.vma.Vma.*;
+import static org.lwjgl.vulkan.KHRBufferDeviceAddress.vkGetBufferDeviceAddressKHR;
+import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+//TODO: make multiple pools for allocations
+public class VmaAllocator {
+    private final VkDevice device;
+    private final long allocator;
+    private final boolean hasDeviceAddresses;
+    public VmaAllocator(VkDevice device, boolean enableDeviceAddresses) {
+        this.device = device;
+        this.hasDeviceAddresses = enableDeviceAddresses;
+        try (var stack = stackPush()){
+            VmaAllocatorCreateInfo allocatorCreateInfo = VmaAllocatorCreateInfo.calloc(stack)
+                    .instance(device.getPhysicalDevice().getInstance())
+                    .physicalDevice(device.getPhysicalDevice())
+                    .device(device)
+                    .pVulkanFunctions(VmaVulkanFunctions
+                            .calloc(stack)
+                            .set(device.getPhysicalDevice().getInstance(), device))
+                    .flags(enableDeviceAddresses?VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT:0);
+
+            /*
+            VkPhysicalDeviceMemoryProperties memoryProperties = VkPhysicalDeviceMemoryProperties.calloc(stack);
+            vkGetPhysicalDeviceMemoryProperties(device.device.getPhysicalDevice(), memoryProperties);
+
+            IntBuffer handleTypes = MemoryUtil.memAllocInt(memoryProperties.memoryTypeCount());
+            for (int i = 0; i < handleTypes.capacity(); i++) {
+                handleTypes.put(i, VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+            }
+            allocatorCreateInfo.pTypeExternalMemoryHandleTypes(handleTypes);
+             */
+
+
+            PointerBuffer pAllocator = stack.pointers(0);
+            if (vmaCreateAllocator(allocatorCreateInfo, pAllocator) != VK_SUCCESS) {
+                throw new RuntimeException("Failed to create allocator");
+            }
+
+            allocator = pAllocator.get(0);
+        }
+    }
+
+    public MemoryPool createPool() {
+        return new MemoryPool(0);
+    }
+    public MemoryPool createPool(Struct chain) {
+        return new MemoryPool(chain.address());
+    }
+
+    public abstract class Allocation {
+        public final VmaAllocationInfo ai;
+        public final long allocation;
+        private boolean freed = false;
+        public Allocation(long allocation, VmaAllocationInfo info) {
+            this.ai = info;
+            this.allocation = allocation;
+        }
+        public void free() {
+            freed = true;
+            //vmaFreeMemory(allocator, allocation);
+            ai.free();
+        }
+    }
+
+    public class BufferAllocation extends Allocation {
+        public final long buffer;
+        public final long deviceAddress;
+        public BufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress) {
+            super(allocation, info);
+            this.buffer = buffer;
+            if (hasDeviceAddresses && hasDeviceAddress) {
+                try (MemoryStack stack = stackPush()) {
+                    deviceAddress = vkGetBufferDeviceAddressKHR(device, VkBufferDeviceAddressInfo
+                            .calloc(stack)
+                            .sType$Default()
+                            .buffer(buffer));
+                }
+            } else {
+                deviceAddress = -1;
+            }
+        }
+
+        @Override
+        public void free() {
+            //vkFreeMemory();
+            vmaDestroyBuffer(allocator, buffer, allocation);
+            super.free();
+        }
+
+        public VkDevice getDevice() {
+            return device;
+        }
+
+        //TODO: Maybe put this in VBuffer
+
+        public void flush(long offset, long size) {
+            //TODO: offset must be a multiple of VkPhysicalDeviceLimits::nonCoherentAtomSize
+            try (var stack = stackPush()) {
+                _CHECK_(vkFlushMappedMemoryRanges(device, VkMappedMemoryRange
+                        .calloc(stack)
+                        .sType$Default()
+                        .memory(ai.deviceMemory())
+                        .size(size)
+                        .offset(ai.offset()+offset)));
+            }
+        }
+    }
+
+    public class ImageAllocation extends Allocation {
+        public final long image;
+        public ImageAllocation(long image, long allocation, VmaAllocationInfo info) {
+            super(allocation, info);
+            this.image = image;
+        }
+
+        @Override
+        public void free() {
+            //vkFreeMemory();
+            vmaDestroyImage(allocator, image, allocation);
+            super.free();
+        }
+    }
+
+    public class MemoryPool {
+        private final long pool;
+        public MemoryPool(long pNext) {
+            try (var stack = stackPush()) {
+                VmaPoolCreateInfo pci = VmaPoolCreateInfo.calloc(stack);
+                pci.pMemoryAllocateNext(pNext);
+                PointerBuffer pb = stack.callocPointer(1);
+                if (vmaCreatePool(allocator, pci, pb) != VK_SUCCESS) {
+                    throw new RuntimeException("Failed to create memory pool");
+                }
+                pool = pb.get(0);
+            }
+        }
+
+        public BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+            try (var stack = stackPush()) {
+                LongBuffer pb = stack.mallocLong(1);
+                PointerBuffer pa = stack.mallocPointer(1);
+                VmaAllocationInfo vai = VmaAllocationInfo.calloc();
+                _CHECK_(
+                        vmaCreateBuffer(allocator,
+                                bufferCreateInfo,
+                                allocationCreateInfo.pool(pool),
+                                pb,
+                                pa,
+                                vai),
+                        "Failed to allocate buffer");
+                return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
+            }
+        }
+
+        public BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo, long alignment) {
+            if (alignment == 0) return alloc(bufferCreateInfo, allocationCreateInfo);
+            try (var stack = stackPush()) {
+                LongBuffer pb = stack.mallocLong(1);
+                PointerBuffer pa = stack.mallocPointer(1);
+                VmaAllocationInfo vai = VmaAllocationInfo.calloc();
+                _CHECK_(
+                        vmaCreateBufferWithAlignment(allocator,
+                                bufferCreateInfo,
+                                allocationCreateInfo.pool(pool),
+                                alignment,
+                                pb,
+                                pa,
+                                vai),
+                        "Failed to allocate buffer");
+                return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
+            }
+        }
+
+        public ImageAllocation alloc(VkImageCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+            try (var stack = stackPush()) {
+                LongBuffer pi = stack.mallocLong(1);
+                PointerBuffer pa = stack.mallocPointer(1);
+                VmaAllocationInfo vai = VmaAllocationInfo.calloc();
+                _CHECK_(
+                        vmaCreateImage(allocator,
+                                bufferCreateInfo,
+                                allocationCreateInfo.pool(pool),
+                                pi,
+                                pa,
+                                vai),
+                        "Failed to allocate buffer");
+                return new ImageAllocation(pi.get(0), pa.get(0), vai);
+            }
+        }
+    }
+}
