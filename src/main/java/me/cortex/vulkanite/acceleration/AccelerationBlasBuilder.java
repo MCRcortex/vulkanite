@@ -5,9 +5,11 @@ package me.cortex.vulkanite.acceleration;
 // then memory copies over to main, while doing compaction
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VQueryPool;
+import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.vulkan.*;
@@ -29,8 +31,8 @@ public class AccelerationBlasBuilder {
     private final VContext context;
     private record BLASTriangleData(int quadCount, NativeBuffer geometry) {}
     private record BLASBuildJob(List<BLASTriangleData> geometries) {}
-    private record BLASBuildResult(VAccelerationStructure structure) {}
-    public record BLASBatchResult(List<BLASBuildResult> results) {}
+    public record BLASBuildResult(VAccelerationStructure structure) {}
+    public record BLASBatchResult(List<BLASBuildResult> results, VSemaphore semaphore) { }
     private final Thread worker;
     private final int asyncQueue;
     private final Consumer<BLASBatchResult> resultConsumer;
@@ -169,6 +171,7 @@ public class AccelerationBlasBuilder {
                 buildInfos.rewind();
                 buildRanges.rewind();
 
+                VSemaphore link = null;
                 {
                     var cmd = context.cmd.singleTimeCommand();
                     //TODO: barrier, maybe not needed
@@ -190,9 +193,13 @@ public class AccelerationBlasBuilder {
                     //TODO: create semaphore and barrier
 
                     //TODO: submit cmd
+                    context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd}, new VSemaphore[0], new int[0], new VSemaphore[]{link}, null);
                 }
+
                 //TODO: wait for query results, check if can clean resources with the fence
                 long[] compactedSizes = queryPool.getResultsLong(jobs.size());
+
+                VSemaphore awaitSemaphore = null;
 
                 //TODO: sync the 2 submisions with a semahore
                 //---------------------
@@ -210,11 +217,17 @@ public class AccelerationBlasBuilder {
                     //TODO: Add fence to cleanup resources with (uncompacted memory buffer)
 
                     //TODO: submit cmd with semaphore
+                    context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd}, new VSemaphore[]{link}, new int[]{VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR}, new VSemaphore[]{awaitSemaphore}, null);
                 }
 
                 //Submit to callback, linking the build semaphore so that we dont stall the queue more than we need
-                resultConsumer.accept(new BLASBatchResult(null));
+                resultConsumer.accept(new BLASBatchResult(null, awaitSemaphore));
             }
         }
+    }
+
+    //Enqueues a section blas build
+    public void enqueue() {
+
     }
 }

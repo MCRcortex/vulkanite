@@ -36,6 +36,8 @@ dependencies {
     modImplementation(fabricApi.module("fabric-rendering-fluids-v1", project.fabric_version))
     modImplementation(fabricApi.module("fabric-rendering-data-attachment-v1", project.fabric_version))
     modImplementation(fabricApi.module("fabric-key-binding-api-v1", project.fabric_version))
+    modImplementation(fabricApi.module("fabric-key-binding-api-v1", project.fabric_version))
+    modImplementation(fabricApi.module("fabric-resource-loader-v0", project.fabric_version))
 
     modImplementation "maven.modrinth:sodium:mc1.20-0.4.10"
     modImplementation "maven.modrinth:iris:1.6.4+1.20"
