@@ -2,6 +2,7 @@ package me.cortex.vulkanite.lib.cmd;
 
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
+import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
 import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkQueue;
 import org.lwjgl.vulkan.VkSubmitInfo;
@@ -37,6 +38,7 @@ public class CommandManager {
         }
     }
 
+    //TODO: if its a single use command buffer, automatically add the required fences and stuff to free the command buffer once its done
     public void submit(int queueId, VCmdBuff[] cmdBuffs, VSemaphore[] waits, int[] waitStages, VSemaphore[] triggers, VFence fence) {
         try (var stack = stackPush()) {
             LongBuffer waitSemaphores = stack.mallocLong(waits.length);
@@ -56,6 +58,10 @@ public class CommandManager {
     }
 
     public synchronized VCmdBuff singleTimeCommand() {
-        return transientPool.createCommandBuffers(1)[0];
+        VCmdBuff buff = transientPool.createCommandBuffers(1)[0];
+        try (var stack = stackPush()) {
+            vkBeginCommandBuffer(buff.buffer, VkCommandBufferBeginInfo.calloc(stack).sType$Default().flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT));
+        }
+        return buff;
     }
 }

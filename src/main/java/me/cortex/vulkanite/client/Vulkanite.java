@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.client;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
+import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
@@ -41,13 +42,27 @@ public class Vulkanite {
 
     public Vulkanite() {
         ctx = createVulkanContext();
+
+        //Fill in the shared index buffer with a large count so we (hopefully) dont have to worry about it anymore
+        SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 10000);
+
         accelerationManager = new AccelerationManager(ctx, 1);
     }
 
-    public void upload(ChunkBuildResult result) {
+    public void upload(List<ChunkBuildResult> results) {
+        /*
         if (((IAccelerationBuildResult)result).getAccelerationGeometryData() == null)
             return;//TODO: delete the chunk section in this case then or something
         accelerationManager.chunkBuild(result);
+         */
+        accelerationManager.chunkBuilds(results);
+    }
+
+    public void renderTick() {
+        ctx.sync.checkFences();
+
+        //TODO: move this to final position (as early as possible before the actual ray rendering to give it time to build (doesnt need to be gl synced))
+        accelerationManager.updateTick();
     }
 
     private static VContext createVulkanContext() {

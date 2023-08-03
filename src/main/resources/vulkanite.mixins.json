@@ -4,11 +4,12 @@
   "package": "me.cortex.vulkanite.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "MixinChunkBuildResult",
-    "MixinChunkRenderRebuildTask",
-    "MixinRenderRegionManager"
   ],
   "client": [
+    "MixinChunkBuildResult",
+    "MixinChunkRenderRebuildTask",
+    "MixinRenderRegionManager",
+    "MixinMinecraftClient"
   ],
   "injectors": {
     "defaultRequire": 1

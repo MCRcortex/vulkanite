@@ -23,7 +23,7 @@ public abstract class MixinRenderRegionManager {
     @Redirect(method = "upload(Lme/jellysquid/mods/sodium/client/gl/device/CommandList;Ljava/util/Iterator;)V", at = @At(value = "INVOKE", target = "Lme/jellysquid/mods/sodium/client/render/chunk/region/RenderRegionManager;upload(Lme/jellysquid/mods/sodium/client/gl/device/CommandList;Lme/jellysquid/mods/sodium/client/render/chunk/region/RenderRegion;Ljava/util/List;)V"))
     private void redirectUpload(RenderRegionManager instance, CommandList graphics, RenderRegion meshData, List<ChunkBuildResult> uploadQueue) {
         if (Vulkanite.IS_ENABLED) {
-            uploadQueue.forEach(Vulkanite.INSTANCE::upload);
+            Vulkanite.INSTANCE.upload(uploadQueue);
         }
         upload(graphics, meshData, uploadQueue);
     }

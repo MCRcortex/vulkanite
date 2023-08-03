@@ -10,6 +10,9 @@ import org.lwjgl.system.MemoryUtil;
 import java.util.EnumMap;
 import java.util.Map;
 
+//TODO: FIXME! the native buffer is destroyed by the AccelerationBlasBuilder after its copied to the gpu, however
+// on world reload or for whatever reason that the result is destroyed (and not submitted to the blas builder)
+// must find a way to free the native buffers
 public class SodiumResultAdapter {
     public static void compute(ChunkBuildResult buildResult) {
         var ebr = (IAccelerationBuildResult) buildResult;

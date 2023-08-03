@@ -9,6 +9,7 @@ import org.lwjgl.vulkan.VkMappedMemoryRange;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.vkGetBufferDeviceAddressKHR;
+import static org.lwjgl.vulkan.VK10.VK_WHOLE_SIZE;
 import static org.lwjgl.vulkan.VK10.vkFlushMappedMemoryRanges;
 
 public class VBuffer {
@@ -27,6 +28,18 @@ public class VBuffer {
 
     public long deviceAddress() {
         return allocation.deviceAddress;
+    }
+
+    public long map() {
+        return allocation.map();
+    }
+
+    public void unmap() {
+        allocation.unmap();
+    }
+
+    public void flush() {
+        allocation.flush(0, VK_WHOLE_SIZE);
     }
 
     public void flush(long offset, long size) {

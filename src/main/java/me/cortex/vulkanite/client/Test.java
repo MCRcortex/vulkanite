@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.client;
 
+import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
@@ -18,6 +19,7 @@ import static org.lwjgl.glfw.GLFW.glfwShowWindow;
 import static org.lwjgl.opengl.GL11C.GL_RGBA8;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.NULL;
+import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.EXTDebugUtils.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.EXTDescriptorIndexing.VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
@@ -108,6 +110,13 @@ public class Test {
         context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         context.memory.createAcceleration(100*256,256, 0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR).free();
         context.cmd.singleTimeCommand();
+
+        var mem = context.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        mem.map();
+        mem.unmap();
+        mem.flush();
+
+        SharedQuadVkIndexBuffer.getIndexBuffer(context, 10000);
     }
 
 

@@ -4,28 +4,35 @@ package me.cortex.vulkanite.acceleration;
 //Multithreaded acceleration manager, builds blas's in a seperate queue,
 // then memory copies over to main, while doing compaction
 
+import me.cortex.vulkanite.client.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VQueryPool;
+import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
+import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPass;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
 import java.nio.LongBuffer;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
 public class AccelerationBlasBuilder {
     private final VContext context;
@@ -40,7 +47,7 @@ public class AccelerationBlasBuilder {
     private final VQueryPool queryPool;
 
     //TODO: maybe move to an executor type system
-    private final Semaphore awaitingJobs = new Semaphore(0);//Note: this is done to avoid spin locking on the job consumer
+    private final Semaphore awaitingJobBatchess = new Semaphore(0);//Note: this is done to avoid spin locking on the job consumer
     private final ConcurrentLinkedDeque<List<BLASBuildJob>> batchedJobs = new ConcurrentLinkedDeque<>();
 
     public AccelerationBlasBuilder(VContext context, int asyncQueue, Consumer<BLASBatchResult> resultConsumer) {
@@ -55,12 +62,14 @@ public class AccelerationBlasBuilder {
 
     //The acceleration manager blas builder runs in batches/groups
     private void run() {
+        MemoryStack bigStack = MemoryStack.create(20_000_000);
+
         List<BLASBuildJob> jobs = new ArrayList<>();
         while (true) {
             {
                 jobs.clear();
                 try {
-                    awaitingJobs.acquire();
+                    awaitingJobBatchess.acquire();
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
@@ -71,24 +80,28 @@ public class AccelerationBlasBuilder {
                     jobs.addAll(this.batchedJobs.poll());
                 }
                 if (i > 0) {
-                    //This updates the semaphore to be accurate, should be able to grab exactly i permits
+                    //This updates the semaphore to be accurate, should be able to grab exactly i permits (number of batches)
                     try {
-                        awaitingJobs.acquire(i);
+                        awaitingJobBatchess.acquire(i);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                 }
             }
-
+            if (jobs.size() > 100) {
+                System.err.println("EXCESSIVE JOBS FOR SOME REASON AAAAAAAAAA");
+                //while (true);
+            }
             //Jobs are batched and built on the async vulkan queue then block synchronized with fence
             // which then results in compaction and dispatch to consumer
 
             //TODO: clean up this spaghetti shithole
-            try (var stack = stackPush()) {
+            try (var stack = bigStack.push()) {
                 var buildInfos = VkAccelerationStructureBuildGeometryInfoKHR.calloc(jobs.size(), stack);
                 PointerBuffer buildRanges = stack.mallocPointer(jobs.size());
                 LongBuffer pAccelerationStructures = stack.mallocLong(jobs.size());
 
+                List<VBuffer> geometryBuffers = new ArrayList<>(jobs.size()*2);
                 var scratchBuffers = new VBuffer[jobs.size()];
                 var accelerationStructures = new VAccelerationStructure[jobs.size()];
 
@@ -108,10 +121,21 @@ public class AccelerationBlasBuilder {
                         //TODO: upload all the geometry into a single vk buffer (by allocating it with VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT )
                         // mapping it to the cpu then doing vkFlushMappedMemoryRanges on the buffer
 
-                        VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(geometry.quadCount);
+                        VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(context, geometry.quadCount);
                         int indexType = SharedQuadVkIndexBuffer.TYPE;
 
-                        VkDeviceOrHostAddressConstKHR vertexData = null;//TODO: FIXME
+                        //TODO: also need to store the buffer so it can be freed later (after blas build the vertex data can be freed as blas is self contained)
+                        var buf = context.memory.createBufferGlobal(geometry.geometry.getLength(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                        long ptr = buf.map();
+                        MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.geometry.getDirectBuffer()), ptr, geometry.geometry.getLength());
+                        buf.unmap();
+                        buf.flush();
+                        //After we copy it over, we can free the native buffer
+                        geometry.geometry.free();
+                        geometryBuffers.add(buf);
+
+
+                        VkDeviceOrHostAddressConstKHR vertexData = VkDeviceOrHostAddressConstKHR.calloc(stack).deviceAddress(buf.deviceAddress());
                         int vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
                         int vertexStride = 4*3;
 
@@ -134,6 +158,8 @@ public class AccelerationBlasBuilder {
                     }
 
                     geometryInfos.rewind();
+                    maxPrims.rewind();
+
                     var bi = buildInfos.get()
                             .sType$Default()
                             .type(VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR)
@@ -156,11 +182,12 @@ public class AccelerationBlasBuilder {
                     var structure = context.memory.createAcceleration(buildSizesInfo.accelerationStructureSize(), 256, //TODO: dont hardcode alignment
                             0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
-                    var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(), 256,//TODO: dont hardcode alignment
+                    var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256);//TODO: dont hardcode alignment
 
                     bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.deviceAddress()));
+                    bi.dstAccelerationStructure(structure.structure);
 
                     pAccelerationStructures.put(structure.structure);
 
@@ -170,15 +197,18 @@ public class AccelerationBlasBuilder {
 
                 buildInfos.rewind();
                 buildRanges.rewind();
+                pAccelerationStructures.rewind();
 
-                VSemaphore link = null;
+                VSemaphore link = context.sync.createBinarySemaphore();
                 {
                     var cmd = context.cmd.singleTimeCommand();
-                    //TODO: barrier, maybe not needed
 
                     vkCmdBuildAccelerationStructuresKHR(cmd.buffer, buildInfos, buildRanges);
 
-                    //TODO: barrier
+                    //TODO: should probably do memory barrier to read access
+                    vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1).sType$Default()
+                            .srcAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)
+                            .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR), null, null);
 
                     queryPool.reset(cmd, 0, jobs.size());
                     vkCmdWriteAccelerationStructuresPropertiesKHR(
@@ -188,46 +218,120 @@ public class AccelerationBlasBuilder {
                             queryPool.pool,
                             0);
 
-                    //TODO: barrier to bottom
 
-                    //TODO: create semaphore and barrier
+                    vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, null, null, null);
 
-                    //TODO: submit cmd
-                    context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd}, new VSemaphore[0], new int[0], new VSemaphore[]{link}, null);
+
+                    VFence buildFence = context.sync.createFence();
+
+                    cmd.end();
+                    context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd}, new VSemaphore[0], new int[0],
+                            new VSemaphore[]{link},
+                            buildFence);
+
+                    {
+                        //We need to wait for the fence which signals that the build has finished and we can query the result
+                        // TODO: find a cleaner way to wait on the query results (tho i think waiting on a fence is realistically the easiest thing to do)
+                        vkWaitForFences(context.device, buildFence.address(), true, -1);
+
+                        //FIXME: this is extream jank, we can clean up after this point because we know the fence has passed, this is so ugly tho
+
+                        for (var sb : scratchBuffers) {
+                            sb.free();
+                        }
+                        for (var gb : geometryBuffers) {
+                            gb.free();
+                        }
+                        //TODO: need to free the cmd buffer and fence AND THE SEMAPHORE
+                        cmd.freeNow();
+
+                        //We can destroy the fence here since we know its passed
+                        buildFence.free();
+
+                        //TODO: maybe make it automatic in submit
+                    }
                 }
 
-                //TODO: wait for query results, check if can clean resources with the fence
                 long[] compactedSizes = queryPool.getResultsLong(jobs.size());
+                VSemaphore awaitSemaphore = context.sync.createBinarySemaphore();
 
-                VSemaphore awaitSemaphore = null;
+                VAccelerationStructure[] compactedAS = new VAccelerationStructure[jobs.size()];
 
-                //TODO: sync the 2 submisions with a semahore
                 //---------------------
                 {
                     var cmd = context.cmd.singleTimeCommand();
+                    //Dont need a memory barrier cause submit ensures cache flushing already
 
-                    //TODO: BARRIER?
+                    for (int idx = 0; idx < compactedSizes.length; idx++) {
+                        var as = context.memory.createAcceleration(compactedSizes[idx], 256,//TODO: dont hardcode alignment
+                                0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
-                    //TODO: create new compacted acceleration structures (from size of query)
+                        vkCmdCopyAccelerationStructureKHR(cmd.buffer, VkCopyAccelerationStructureInfoKHR.calloc(stack).sType$Default()
+                                .src(accelerationStructures[idx].structure)
+                                .dst(as.structure)
+                                .mode(VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR));
 
-                    //TODO: copy old acceleration structure to new accerleration structure
+                        compactedAS[idx] = as;
+                    }
 
-                    //TODO: Barrier
+                    vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, null, null, null);
 
-                    //TODO: Add fence to cleanup resources with (uncompacted memory buffer)
+                    VFence fence = context.sync.createFence();
 
-                    //TODO: submit cmd with semaphore
-                    context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd}, new VSemaphore[]{link}, new int[]{VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR}, new VSemaphore[]{awaitSemaphore}, null);
+                    cmd.end();
+                    context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd},
+                            new VSemaphore[]{link},
+                            new int[]{VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR},
+                            new VSemaphore[]{awaitSemaphore},
+                            fence);
+
+                    context.sync.addCallback(fence, () -> {
+                        for (var as : accelerationStructures) {
+                            as.free();
+                        }
+
+                        cmd.freeNow();
+                        fence.free();
+                        link.free();
+                    });
                 }
 
                 //Submit to callback, linking the build semaphore so that we dont stall the queue more than we need
                 resultConsumer.accept(new BLASBatchResult(null, awaitSemaphore));
+
+                //TODO: FIXME, so there is an issue in that the query pool needs to be represented per thing
+                // since the cpu can run ahead of the gpu, need multiple query pools until we know the gpu is finished with it
+                // using a fence, OR FOR THREAD ONLY we can assume that we allow one batch per queue
+                //that is, at the end (here) we do a vkWaitForFences on the final fence, _then_ we can release all the temporary
+                // resources that we know weve used, TODO: I THINK I FIXED THIS BY PUTTING A FENCE SYNC between stage 1 and 2
+
+                //NOTE: THIS IS ACTUALLY WRONG, since we need to block on the query result in order to do the second part
+                // it doesnt matter about needing multiple query pools
+
+                //vkDeviceWaitIdle(context.device);
             }
         }
     }
 
-    //Enqueues a section blas build
-    public void enqueue() {
+    //Enqueues jobs of section blas builds
+    public void enqueue(List<ChunkBuildResult> batch) {
+        List<BLASBuildJob> jobs = new ArrayList<>(batch.size());
+        for (ChunkBuildResult cbr : batch) {
+            var acbr = ((IAccelerationBuildResult)cbr).getAccelerationGeometryData();
+            if (acbr == null)
+                continue;
+            List<BLASTriangleData> buildData = new ArrayList<>();
+            for (var passData : acbr.values()) {
+                //TODO: dont hardcode the stride size
+                buildData.add(new BLASTriangleData((passData.getLength()/12)/4, passData));
+            }
+            jobs.add(new BLASBuildJob(buildData));
+        }
 
+        if (jobs.isEmpty()) {
+            return;//No jobs to do
+        }
+        batchedJobs.add(jobs);
+        awaitingJobBatchess.release();
     }
 }

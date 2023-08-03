@@ -1,10 +1,8 @@
 package me.cortex.vulkanite.acceleration;
 
-import me.cortex.vulkanite.client.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
-import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -21,16 +19,11 @@ public class AccelerationManager {
     public AccelerationManager(VContext context, int blasBuildQueue) {
         this.ctx = context;
         this.blasBuilder = new AccelerationBlasBuilder(context, blasBuildQueue, blasResults::add);
-        this.tlasManager = new AccelerationTLASManager(context);
+        this.tlasManager = new AccelerationTLASManager(context, 0);//TODO: pick the main queue or something? (maybe can do the blasBuildQueue)
     }
 
-    public void chunkBuild(ChunkBuildResult result) {
-        var accelerationData = ((IAccelerationBuildResult)result).getAccelerationGeometryData();
-
-        //TODO: instead of submitting them one at a time, batch them
-        blasBuilder.enqueue();
-
-        accelerationData.values().forEach(NativeBuffer::free);
+    public void chunkBuilds(List<ChunkBuildResult> results) {
+        blasBuilder.enqueue(results);
     }
 
     //This is the primary render thread tick, called once per frame updates the tlas
@@ -45,7 +38,8 @@ public class AccelerationManager {
                 syncs.add(batch.semaphore());
             }
 
-            var resultSemaphore = tlasManager.updateTLAS(syncs, results);
+            //var resultSemaphore = tlasManager.buildTLAS(syncs, results);
         }
+        //tlasManager.buildTLAS(null, new VSemaphore[0]);
     }
 }

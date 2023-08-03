@@ -57,8 +57,63 @@ public class VmaAllocator {
     public MemoryPool createPool() {
         return new MemoryPool(0);
     }
+
     public MemoryPool createPool(Struct chain) {
         return new MemoryPool(chain.address());
+    }
+
+    //NOTE: SHOULD ONLY BE USED TO ALLOCATE SHARED MEMORY AND STUFF, not recommended
+    BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+        try (var stack = stackPush()) {
+            LongBuffer pb = stack.mallocLong(1);
+            PointerBuffer pa = stack.mallocPointer(1);
+            VmaAllocationInfo vai = VmaAllocationInfo.calloc();
+            _CHECK_(
+                    vmaCreateBuffer(allocator,
+                            bufferCreateInfo,
+                            allocationCreateInfo.pool(pool),
+                            pb,
+                            pa,
+                            vai),
+                    "Failed to allocate buffer");
+            return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
+        }
+    }
+
+    BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo, long alignment) {
+        if (alignment == 0) return alloc(pool, bufferCreateInfo, allocationCreateInfo);
+        try (var stack = stackPush()) {
+            LongBuffer pb = stack.mallocLong(1);
+            PointerBuffer pa = stack.mallocPointer(1);
+            VmaAllocationInfo vai = VmaAllocationInfo.calloc();
+            _CHECK_(
+                    vmaCreateBufferWithAlignment(allocator,
+                            bufferCreateInfo,
+                            allocationCreateInfo.pool(pool),
+                            alignment,
+                            pb,
+                            pa,
+                            vai),
+                    "Failed to allocate buffer");
+            return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
+        }
+    }
+
+    ImageAllocation alloc(long pool, VkImageCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+        try (var stack = stackPush()) {
+            LongBuffer pi = stack.mallocLong(1);
+            PointerBuffer pa = stack.mallocPointer(1);
+            VmaAllocationInfo vai = VmaAllocationInfo.calloc();
+            _CHECK_(
+                    vmaCreateImage(allocator,
+                            bufferCreateInfo,
+                            allocationCreateInfo.pool(pool),
+                            pi,
+                            pa,
+                            vai),
+                    "Failed to allocate buffer");
+            return new ImageAllocation(pi.get(0), pa.get(0), vai);
+        }
     }
 
     public abstract class Allocation {
@@ -105,17 +160,30 @@ public class VmaAllocator {
             return device;
         }
 
-        //TODO: Maybe put this in VBuffer
+        //TODO: Maybe put the following 3 in VBuffer
+        public long map() {
+            try(var stack = stackPush()) {
+                PointerBuffer res = stack.callocPointer(1);
+                _CHECK_(vmaMapMemory(allocator, allocation, res));
+                return res.get(0);
+            }
+        }
+
+        public void unmap() {
+            vmaUnmapMemory(allocator, allocation);
+        }
 
         public void flush(long offset, long size) {
             //TODO: offset must be a multiple of VkPhysicalDeviceLimits::nonCoherentAtomSize
             try (var stack = stackPush()) {
+                /*
                 _CHECK_(vkFlushMappedMemoryRanges(device, VkMappedMemoryRange
                         .calloc(stack)
                         .sType$Default()
                         .memory(ai.deviceMemory())
                         .size(size)
-                        .offset(ai.offset()+offset)));
+                        .offset(ai.offset()+offset)));*/
+                vmaFlushAllocation(allocator, allocation, offset, size);
             }
         }
     }
@@ -148,58 +216,15 @@ public class VmaAllocator {
                 pool = pb.get(0);
             }
         }
-
-        public BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
-            try (var stack = stackPush()) {
-                LongBuffer pb = stack.mallocLong(1);
-                PointerBuffer pa = stack.mallocPointer(1);
-                VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-                _CHECK_(
-                        vmaCreateBuffer(allocator,
-                                bufferCreateInfo,
-                                allocationCreateInfo.pool(pool),
-                                pb,
-                                pa,
-                                vai),
-                        "Failed to allocate buffer");
-                return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
-            }
+        BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+            return VmaAllocator.this.alloc(pool, bufferCreateInfo, allocationCreateInfo);
         }
 
-        public BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo, long alignment) {
-            if (alignment == 0) return alloc(bufferCreateInfo, allocationCreateInfo);
-            try (var stack = stackPush()) {
-                LongBuffer pb = stack.mallocLong(1);
-                PointerBuffer pa = stack.mallocPointer(1);
-                VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-                _CHECK_(
-                        vmaCreateBufferWithAlignment(allocator,
-                                bufferCreateInfo,
-                                allocationCreateInfo.pool(pool),
-                                alignment,
-                                pb,
-                                pa,
-                                vai),
-                        "Failed to allocate buffer");
-                return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
-            }
+        BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo, long alignment) {
+            return VmaAllocator.this.alloc(pool, bufferCreateInfo, allocationCreateInfo, alignment);
         }
-
         public ImageAllocation alloc(VkImageCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
-            try (var stack = stackPush()) {
-                LongBuffer pi = stack.mallocLong(1);
-                PointerBuffer pa = stack.mallocPointer(1);
-                VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-                _CHECK_(
-                        vmaCreateImage(allocator,
-                                bufferCreateInfo,
-                                allocationCreateInfo.pool(pool),
-                                pi,
-                                pa,
-                                vai),
-                        "Failed to allocate buffer");
-                return new ImageAllocation(pi.get(0), pa.get(0), vai);
-            }
+            return VmaAllocator.this.alloc(pool, bufferCreateInfo, allocationCreateInfo);
         }
     }
 }

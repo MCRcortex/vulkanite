@@ -1,10 +1,17 @@
 package me.cortex.vulkanite.lib.other.sync;
 
 import org.lwjgl.system.Pointer;
+import org.lwjgl.vulkan.VkDevice;
 
-public class VFence implements Pointer {
+import static org.lwjgl.vulkan.VK10.vkDestroyFence;
+
+public record VFence(VkDevice device, long fence) implements Pointer {
     @Override
     public long address() {
-        return 0;
+        return fence;
+    }
+
+    public void free() {
+        vkDestroyFence(device, fence, null);
     }
 }

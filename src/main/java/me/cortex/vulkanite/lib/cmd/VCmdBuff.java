@@ -4,6 +4,7 @@ import org.lwjgl.system.Pointer;
 import org.lwjgl.vulkan.VkCommandBuffer;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.vulkan.VK10.vkEndCommandBuffer;
 import static org.lwjgl.vulkan.VK10.vkFreeCommandBuffers;
 
 public class VCmdBuff implements Pointer {
@@ -15,12 +16,16 @@ public class VCmdBuff implements Pointer {
     }
 
 
-
     //Note: contains no syncing, immediately frees
     public void freeNow() {
-        try (var stack = stackPush()) {
-            vkFreeCommandBuffers(pool.device, pool.pool, buffer);
-        }
+        vkFreeCommandBuffers(pool.device, pool.pool, buffer);
+        //try (var stack = stackPush()) {
+        //    vkFreeCommandBuffers(pool.device, pool.pool, buffer);
+        //}
+    }
+
+    public void end() {
+        vkEndCommandBuffer(buffer);
     }
 
     @Override

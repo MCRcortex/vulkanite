@@ -124,8 +124,23 @@ public class MemoryManager {
         }
     }
 
+    public VBuffer createBufferGlobal(long size, int usage, int properties, int vmaFlags) {
+        try (var stack = stackPush()) {
+            var alloc = allocator.alloc(0, VkBufferCreateInfo
+                            .calloc(stack)
+                            .sType$Default()
+                            .size(size)
+                            .usage(usage),
+                    VmaAllocationCreateInfo.calloc(stack)
+                            .usage(VMA_MEMORY_USAGE_AUTO)
+                            .requiredFlags(properties)
+                            .flags(vmaFlags));
+            return new VBuffer(alloc);
+        }
+    }
+
     public VBuffer createBuffer(long size, int usage, int properties) {
-        return createBuffer(size, usage, properties, 0);
+        return createBuffer(size, usage, properties, 0L);
     }
 
     public VBuffer createBuffer(long size, int usage, int properties, long alignment) {
