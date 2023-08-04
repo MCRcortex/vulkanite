@@ -7,11 +7,13 @@ package me.cortex.vulkanite.acceleration;
 import me.cortex.vulkanite.client.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
+import me.cortex.vulkanite.lib.cmd.VCommandPool;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VQueryPool;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
+import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
 import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPass;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
@@ -37,12 +39,13 @@ import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 public class AccelerationBlasBuilder {
     private final VContext context;
     private record BLASTriangleData(int quadCount, NativeBuffer geometry) {}
-    private record BLASBuildJob(List<BLASTriangleData> geometries) {}
-    public record BLASBuildResult(VAccelerationStructure structure) {}
+    private record BLASBuildJob(List<BLASTriangleData> geometries, RenderSection section, long time) {}
+    public record BLASBuildResult(VAccelerationStructure structure, RenderSection section, long time) {}
     public record BLASBatchResult(List<BLASBuildResult> results, VSemaphore semaphore) { }
     private final Thread worker;
     private final int asyncQueue;
     private final Consumer<BLASBatchResult> resultConsumer;
+    private final VCommandPool sinlgeUsePool;
 
     private final VQueryPool queryPool;
 
@@ -51,6 +54,7 @@ public class AccelerationBlasBuilder {
     private final ConcurrentLinkedDeque<List<BLASBuildJob>> batchedJobs = new ConcurrentLinkedDeque<>();
 
     public AccelerationBlasBuilder(VContext context, int asyncQueue, Consumer<BLASBatchResult> resultConsumer) {
+        this.sinlgeUsePool = new VCommandPool(context.device, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
         this.queryPool = new VQueryPool(context.device, 10000, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR);
         this.context = context;
         this.asyncQueue = asyncQueue;
@@ -201,7 +205,8 @@ public class AccelerationBlasBuilder {
 
                 VSemaphore link = context.sync.createBinarySemaphore();
                 {
-                    var cmd = context.cmd.singleTimeCommand();
+                    var cmd = sinlgeUsePool.createCommandBuffer();
+                    cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
                     vkCmdBuildAccelerationStructuresKHR(cmd.buffer, buildInfos, buildRanges);
 
@@ -243,7 +248,7 @@ public class AccelerationBlasBuilder {
                             gb.free();
                         }
                         //TODO: need to free the cmd buffer and fence AND THE SEMAPHORE
-                        cmd.freeNow();
+                        sinlgeUsePool.releaseNow(cmd);
 
                         //We can destroy the fence here since we know its passed
                         buildFence.free();
@@ -259,7 +264,9 @@ public class AccelerationBlasBuilder {
 
                 //---------------------
                 {
-                    var cmd = context.cmd.singleTimeCommand();
+                    var cmd = sinlgeUsePool.createCommandBuffer();
+                    cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
                     //Dont need a memory barrier cause submit ensures cache flushing already
 
                     for (int idx = 0; idx < compactedSizes.length; idx++) {
@@ -290,7 +297,7 @@ public class AccelerationBlasBuilder {
                             as.free();
                         }
 
-                        cmd.freeNow();
+                        cmd.enqueueFree();
                         fence.free();
                         link.free();
                     });
@@ -325,7 +332,7 @@ public class AccelerationBlasBuilder {
                 //TODO: dont hardcode the stride size
                 buildData.add(new BLASTriangleData((passData.getLength()/12)/4, passData));
             }
-            jobs.add(new BLASBuildJob(buildData));
+            jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime));
         }
 
         if (jobs.isEmpty()) {

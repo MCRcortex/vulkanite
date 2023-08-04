@@ -8,11 +8,11 @@ import org.lwjgl.vulkan.VkCommandPoolCreateInfo;
 import org.lwjgl.vulkan.VkDevice;
 
 import java.nio.LongBuffer;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
-import static org.lwjgl.vulkan.VK10.vkAllocateCommandBuffers;
-import static org.lwjgl.vulkan.VK10.vkCreateCommandPool;
+import static org.lwjgl.vulkan.VK10.*;
 
 public class VCommandPool {
     final VkDevice device;
@@ -32,6 +32,10 @@ public class VCommandPool {
             _CHECK_(vkCreateCommandPool(device, cmdPoolInfo, null, pCmdPool));
             pool = pCmdPool.get(0);
         }
+    }
+
+    public synchronized VCmdBuff createCommandBuffer() {
+        return createCommandBuffers(1)[0];
     }
 
     public synchronized VCmdBuff[] createCommandBuffers(int count) {
@@ -55,5 +59,25 @@ public class VCommandPool {
             }
             return buffers;
         }
+    }
+
+    private final ConcurrentLinkedDeque<VCmdBuff> toRelease = new ConcurrentLinkedDeque<>();
+    void free(VCmdBuff cmdBuff) {
+        toRelease.add(cmdBuff);
+    }
+
+    public void doReleases() {
+        while (!toRelease.isEmpty()) {
+            vkFreeCommandBuffers(device, pool, toRelease.poll().buffer);
+        }
+    }
+
+    public void destroy() {
+        throw new IllegalStateException("NOT IMPLEMENTED");
+    }
+
+    public void releaseNow(VCmdBuff cmd) {
+        //NOTE: the reason this is done here and not in VCmdBuff is so that it is not accidently done in VCmdBuff
+        vkFreeCommandBuffers(device, pool, cmd.buffer);
     }
 }

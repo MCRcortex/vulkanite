@@ -16,7 +16,6 @@ import static org.lwjgl.vulkan.VK10.*;
 public class CommandManager {
     private final VkDevice device;
     private final VkQueue[] queues;
-    private final VCommandPool transientPool;
 
     public CommandManager(VkDevice device, int queues) {
         this.device = device;
@@ -28,8 +27,14 @@ public class CommandManager {
                 this.queues[i] = new VkQueue(pQ.get(0), device);
             }
         }
+    }
 
-        transientPool = new VCommandPool(device, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+    public VCommandPool createSingleUsePool() {
+        return createPool(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+    }
+
+    public VCommandPool createPool(int flags) {
+        return new VCommandPool(device, flags);
     }
 
     public void submit(int queueId, VkSubmitInfo submit) {
@@ -55,13 +60,5 @@ public class CommandManager {
                     .pSignalSemaphores(signalSemaphores);
             vkQueueSubmit(queues[queueId], submit, fence==null?0:fence.address());
         }
-    }
-
-    public synchronized VCmdBuff singleTimeCommand() {
-        VCmdBuff buff = transientPool.createCommandBuffers(1)[0];
-        try (var stack = stackPush()) {
-            vkBeginCommandBuffer(buff.buffer, VkCommandBufferBeginInfo.calloc(stack).sType$Default().flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT));
-        }
-        return buff;
     }
 }

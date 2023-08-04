@@ -62,7 +62,7 @@ public class Vulkanite {
         ctx.sync.checkFences();
 
         //TODO: move this to final position (as early as possible before the actual ray rendering to give it time to build (doesnt need to be gl synced))
-        accelerationManager.updateTick();
+        //accelerationManager.updateTick();
     }
 
     private static VContext createVulkanContext() {
@@ -71,7 +71,8 @@ public class Vulkanite {
                         VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
                         VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME,
                         VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME,
-                        VK_EXT_DEBUG_UTILS_EXTENSION_NAME},
+                        VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+                },
                 new String[] {
                         "VK_LAYER_KHRONOS_validation",
                 });

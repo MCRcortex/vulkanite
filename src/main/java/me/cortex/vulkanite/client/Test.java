@@ -109,7 +109,8 @@ public class Test {
         context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         context.memory.createAcceleration(100*256,256, 0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR).free();
-        context.cmd.singleTimeCommand();
+        var pool = context.cmd.createSingleUsePool();
+        pool.createCommandBuffer();
 
         var mem = context.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
         mem.map();

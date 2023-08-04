@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 
 import java.util.Map;
 
-@Mixin(ChunkBuildResult.class)
+@Mixin(value = ChunkBuildResult.class, remap = false)
 public class MixinChunkBuildResult implements IAccelerationBuildResult {
     @Unique private Map<BlockRenderPass, NativeBuffer> geometryMap;
 

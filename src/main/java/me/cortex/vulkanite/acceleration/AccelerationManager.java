@@ -37,7 +37,7 @@ public class AccelerationManager {
                 results.addAll(batch.results());
                 syncs.add(batch.semaphore());
             }
-
+            tlasManager.updateSections(results);
             //var resultSemaphore = tlasManager.buildTLAS(syncs, results);
         }
         //tlasManager.buildTLAS(null, new VSemaphore[0]);
