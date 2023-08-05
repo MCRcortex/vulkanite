@@ -2,6 +2,7 @@ package me.cortex.vulkanite.acceleration;
 
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
+import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
 
 import java.util.LinkedList;
@@ -41,5 +42,9 @@ public class AccelerationManager {
             //var resultSemaphore = tlasManager.buildTLAS(syncs, results);
         }
         //tlasManager.buildTLAS(null, new VSemaphore[0]);
+    }
+
+    public void sectionRemove(RenderSection section) {
+        tlasManager.removeSection(section);
     }
 }

@@ -4,6 +4,8 @@ import me.cortex.vulkanite.acceleration.AccelerationManager;
 import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
+import me.cortex.vulkanite.mixin.MixinRenderSection;
+import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
 import org.lwjgl.vulkan.VkPhysicalDeviceAccelerationStructureFeaturesKHR;
 import org.lwjgl.vulkan.VkPhysicalDeviceBufferDeviceAddressFeaturesKHR;
@@ -58,11 +60,15 @@ public class Vulkanite {
         accelerationManager.chunkBuilds(results);
     }
 
+    public void sectionRemove(RenderSection section) {
+        accelerationManager.sectionRemove(section);
+    }
+
     public void renderTick() {
         ctx.sync.checkFences();
 
         //TODO: move this to final position (as early as possible before the actual ray rendering to give it time to build (doesnt need to be gl synced))
-        //accelerationManager.updateTick();
+        accelerationManager.updateTick();
     }
 
     private static VContext createVulkanContext() {
@@ -121,4 +127,5 @@ public class Vulkanite {
 
         return init.createContext();
     }
+
 }

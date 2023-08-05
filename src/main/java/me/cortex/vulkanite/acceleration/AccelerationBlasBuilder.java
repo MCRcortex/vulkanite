@@ -262,6 +262,8 @@ public class AccelerationBlasBuilder {
 
                 VAccelerationStructure[] compactedAS = new VAccelerationStructure[jobs.size()];
 
+                List<BLASBuildResult> results = new ArrayList<>();
+
                 //---------------------
                 {
                     var cmd = sinlgeUsePool.createCommandBuffer();
@@ -279,6 +281,8 @@ public class AccelerationBlasBuilder {
                                 .mode(VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR));
 
                         compactedAS[idx] = as;
+                        var job = jobs.get(idx);
+                        results.add(new BLASBuildResult(as, job.section, job.time));
                     }
 
                     vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, null, null, null);
@@ -304,7 +308,7 @@ public class AccelerationBlasBuilder {
                 }
 
                 //Submit to callback, linking the build semaphore so that we dont stall the queue more than we need
-                resultConsumer.accept(new BLASBatchResult(null, awaitSemaphore));
+                resultConsumer.accept(new BLASBatchResult(results, awaitSemaphore));
 
                 //TODO: FIXME, so there is an issue in that the query pool needs to be represented per thing
                 // since the cpu can run ahead of the gpu, need multiple query pools until we know the gpu is finished with it

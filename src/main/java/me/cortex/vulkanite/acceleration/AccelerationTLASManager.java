@@ -10,14 +10,11 @@ import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
-import org.lwjgl.PointerBuffer;
-import org.lwjgl.system.MemoryStack;
+import org.joml.Matrix4x3f;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.List;
+import java.util.*;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
@@ -48,6 +45,10 @@ public class AccelerationTLASManager {
 
             buildDataManager.update(result);
         }
+    }
+
+    public void removeSection(RenderSection section) {
+        buildDataManager.remove(section);
     }
 
 
@@ -173,31 +174,29 @@ public class AccelerationTLASManager {
         //Needs a gpu buffer for the instance data, this can be reused
         //private VkAccelerationStructureInstanceKHR.Buffer buffer;
 
-        private VBuffer instanceData;
-        private long pointers;
-        private BitSet free;
-        private int[] instance2pointer;
-        private int[] pointer2instance;
+        private VkAccelerationStructureInstanceKHR.Buffer instances = VkAccelerationStructureInstanceKHR.calloc(30000);
+        private int[] instance2pointer = new int[30000];
+        private int[] pointer2instance = new int[30000];
+        private BitSet free = new BitSet(30000);//The reason this is needed is to give non used instance ids
         private int count;
 
+        public TLASGeometryManager() {
+            free.set(0, instance2pointer.length);
+        }
 
 
 
-        //TODO: just do the whole instance2pointer map idea thing directly on the VkAccelerationStructureInstanceKHR buffer
+        //TODO: make the instances buffer, gpu permenent then stream updates instead of uploading per frame
         public void setGeometryUpdateMemory(VCmdBuff cmd, VFence fence, VkAccelerationStructureGeometryKHR struct) {
-            //TODO: should probably cache the pointerData, since it should be pretty constant and only change if new geometry was added or removed (changing geometry doesnt cause update)
-            VBuffer pointerData = context.memory.createBufferGlobal(count * 8L, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-            long ptr = pointerData.map();
-            MemoryUtil.memCopy(this.pointers, ptr, count * 8L);
-            pointerData.unmap();
-            pointerData.flush();
-
-
-
+            long size = (long) VkAccelerationStructureInstanceKHR.SIZEOF * count;
+            VBuffer data = context.memory.createBufferGlobal(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            long ptr = data.map();
+            MemoryUtil.memCopy(this.instances.address(0), ptr, size);
+            data.unmap();
+            data.flush();
 
             context.sync.addCallback(fence, () -> {
-                pointerData.free();
-
+                data.free();
             });
 
             struct.sType$Default()
@@ -207,12 +206,12 @@ public class AccelerationTLASManager {
             struct.geometry()
                     .instances()
                     .sType$Default()
-                    .arrayOfPointers(true);
+                    .arrayOfPointers(false);
 
             struct.geometry()
                     .instances()
                     .data()
-                    .deviceAddress(pointerData.deviceAddress());
+                    .deviceAddress(data.deviceAddress());
         }
 
         public int sectionCount() {
@@ -221,14 +220,12 @@ public class AccelerationTLASManager {
 
         protected int alloc() {
             int id = free.nextSetBit(0);
+
             free.clear(id);
 
             //Update the map
             instance2pointer[id] = count;
-            instance2pointer[count] = id;
-
-            //Set the pointer if the instance data
-            MemoryUtil.memPutAddress(pointers + count*8L, instanceData.deviceAddress() + (long) id * VkAccelerationStructureInstanceKHR.SIZEOF);
+            pointer2instance[count] = id;
 
             //Increment the count
             count++;
@@ -239,9 +236,9 @@ public class AccelerationTLASManager {
         protected void free(int id) {
             free.set(id);
 
+            count--;
             if (instance2pointer[id] == count) {
                 //We are at the end of the pointer list, so just decrement and be done
-                count--;
                 instance2pointer[id] = -1;
                 pointer2instance[count] = -1;
             } else {
@@ -250,27 +247,66 @@ public class AccelerationTLASManager {
                 //We need to remove the pointer, and fill it in with the last element in the pointer array, updating the mapping of the moved
                 int ptrId = instance2pointer[id];
                 instance2pointer[id] = -1;
-                count--;
 
-                pointer2instance[ptrId] = instance2pointer[count];
-                MemoryUtil.memPutAddress(pointers + ptrId * 8L, MemoryUtil.memGetAddress(pointers + count * 8L));
+                //I feel like this should be pointer2instance = pointer2instance
+                pointer2instance[ptrId] = pointer2instance[count];
+
+                //move over the ending data to the missing hole point
+                MemoryUtil.memCopy(instances.address(count), instances.address(ptrId), VkAccelerationStructureInstanceKHR.SIZEOF);
+
                 instance2pointer[pointer2instance[count]] = ptrId;
             }
         }
 
         protected void update(int id, VkAccelerationStructureInstanceKHR data) {
-
+            MemoryUtil.memCopy(data.address(), instances.address(instance2pointer[id]), VkAccelerationStructureInstanceKHR.SIZEOF);
         }
     }
 
     private final class TLASSectionManager extends TLASGeometryManager {
         //TODO: mixinto RenderSection and add a reference to a holder for us, its much faster than a hashmap
-        public void update(AccelerationBlasBuilder.BLASBuildResult result) {
+        private static final class Holder {
+            final int id;
+            final RenderSection section;
+            VAccelerationStructure structure;
 
+            private Holder(int id, RenderSection section) {
+                this.id = id;
+                this.section = section;
+            }
+        }
+
+        Map<RenderSection, Holder> tmp = new HashMap<>();
+
+        public void update(AccelerationBlasBuilder.BLASBuildResult result) {
+            var holder = tmp.computeIfAbsent(result.section(), a -> {
+               return new Holder(alloc(), a);
+            });
+            if (holder.structure != null) {
+                //TODO: enqueue holder.structure to be freed on next fence op
+            }
+            holder.structure = result.structure();
+
+            try (var stack = stackPush()) {
+                var asi = VkAccelerationStructureInstanceKHR.calloc(stack)
+                        .mask(~0)
+                        .flags(0)
+                        .instanceCustomIndex(holder.id)
+                        .accelerationStructureReference(holder.structure.deviceAddress);
+                asi.transform()
+                        .matrix(new Matrix4x3f()
+                                .translate(holder.section.getOriginX(), holder.section.getOriginY(), holder.section.getOriginZ())
+                                .getTransposed(stack.mallocFloat(12)));
+                update(holder.id, asi);
+            }
         }
 
         public void remove(RenderSection section) {
-
+            var holder = tmp.remove(section);
+            if (holder == null)
+                return;
+            //TODO: enqueue holder.structure to be freed on next fence op
+            free(holder.id);
         }
     }
 }
