@@ -14,8 +14,22 @@ import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class VShader {
-    public VShader(VContext ctx, long module, int stage) {
+    private final VContext ctx;
+    public final long module;
+    public final int stage;
 
+    public VShader(VContext ctx, long module, int stage) {
+        this.ctx = ctx;
+        this.module = module;
+        this.stage = stage;
+    }
+
+    public ShaderModule named() {
+        return named("main");
+    }
+
+    public ShaderModule named(String name) {
+        return new ShaderModule(this, name);
     }
 
     private static int vulkanStageToShadercKind(int stage) {
