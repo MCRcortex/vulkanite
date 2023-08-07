@@ -1,19 +1,23 @@
 package me.cortex.vulkanite.lib.pipeline;
 
 import me.cortex.vulkanite.lib.base.VContext;
-import org.lwjgl.vulkan.VkPipelineLayoutCreateInfo;
-import org.lwjgl.vulkan.VkPipelineShaderStageCreateInfo;
-import org.lwjgl.vulkan.VkRayTracingPipelineCreateInfoKHR;
-import org.lwjgl.vulkan.VkRayTracingShaderGroupCreateInfoKHR;
+import me.cortex.vulkanite.lib.memory.VBuffer;
+import org.lwjgl.system.MemoryUtil;
+import org.lwjgl.vulkan.*;
 
+import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
 import java.util.*;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
+import static me.cortex.vulkanite.lib.other.VUtil.alignUp;
 import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.system.MemoryUtil.memCopy;
+import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
-import static org.lwjgl.vulkan.VK10.VK_NULL_HANDLE;
-import static org.lwjgl.vulkan.VK10.vkCreatePipelineLayout;
+import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
 
 public class RaytracePipelineBuilder {
 
@@ -108,6 +112,7 @@ public class RaytracePipelineBuilder {
                     ;
                 });
 
+                groupsArr.rewind();
             }
 
             VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack)
@@ -133,6 +138,55 @@ public class RaytracePipelineBuilder {
             _CHECK_(vkCreateRayTracingPipelinesKHR(context.device, VK_NULL_HANDLE, VK_NULL_HANDLE,
                     VkRayTracingPipelineCreateInfoKHR.create(pipelineCreateInfo.address(), 1),
                     null, pPipeline));
+
+
+            {
+                //Generate the SBT lut
+                var props = context.properties.rtPipelineProperties;
+                long groupBaseAlignment = props.shaderGroupBaseAlignment();
+                long handleSize = props.shaderGroupHandleSize();
+                long handleSizeAligned = alignUp(handleSize, props.shaderGroupHandleAlignment());
+
+                int totalGroups = groupsArr.capacity();
+
+                long rgenBase = 0;
+                long missGroupBase = alignUp(rgenBase + handleSizeAligned, groupBaseAlignment);
+                long missGroupCount = missGroups.size();
+                long hitGroupsBase = alignUp(missGroupBase + handleSizeAligned * missGroupCount, groupBaseAlignment);
+                long hitGroupsCount = hitGroups.size();
+                long callGroupBase = alignUp(hitGroupsBase + handleSizeAligned * hitGroupsCount, groupBaseAlignment);
+                long callGroupCount = callGroups.size();
+
+                long sbtSize = alignUp(missGroupBase + missGroupCount * handleSizeAligned, groupBaseAlignment);
+
+                ByteBuffer handles = stack.malloc(totalGroups * (int)handleSize);
+                _CHECK_(vkGetRayTracingShaderGroupHandlesKHR(context.device, pPipeline.get(0), 0, totalGroups, handles),
+                        "Failed to obtain ray tracing group handles");
+
+                long aHandles = MemoryUtil.memAddress(handles);
+
+                //TODO/FIXME: add alignment to gpu buffer
+                VBuffer sbtMap = context.memory.createBufferGlobal(sbtSize,
+                        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
+                                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR,
+                        VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                long ptr = sbtMap.map();
+
+                // Groups in order of RayGen, Miss Groups, Hit Groups, and callable
+                // 1. Copy ray gen
+                memCopy(aHandles, ptr + rgenBase, handleSize);
+                // 2. Copy miss groups
+                //memCopy(aHandles + handleSize, ptr + hitGroupsBase + i * handleSizeAligned, handleSize);
+                // 3. Copy hit groups
+                //memCopy(aHandles + (indexInPipeline++) * handleSize, aHandlesForGpu + missGroupBase + i * handleSizeAligned, handleSize);
+                // 4. Copy callable
+                //memCopy(aHandles + (indexInPipeline++) * handleSize, aHandlesForGpu + callGroupBase + i * handleSizeAligned, handleSize);
+
+                sbtMap.unmap();
+                sbtMap.flush();
+            }
 
             return new VRaytracePipeline();
         }

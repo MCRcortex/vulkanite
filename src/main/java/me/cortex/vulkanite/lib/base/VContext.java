@@ -8,13 +8,16 @@ import org.lwjgl.vulkan.VkDevice;
 public class VContext {
     public final VkDevice device;
 
+
     public final MemoryManager memory;
     public final SyncManager sync;
     public final CommandManager cmd;
+    public final DeviceProperties properties;
     public VContext(VkDevice device, int queueCount, boolean hasDeviceAddresses) {
         this.device = device;
         memory = new MemoryManager(device, hasDeviceAddresses);
         sync = new SyncManager(device);
         cmd = new CommandManager(device, queueCount);
+        properties = new DeviceProperties(device);
     }
 }

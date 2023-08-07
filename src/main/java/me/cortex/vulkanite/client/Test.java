@@ -144,6 +144,9 @@ public class Test {
                 .addMiss(rms.named())
                 .addHit(rchs.named(), null, null)
                 .build(context, 1);
+
+        context.sync.createSharedBinarySemaphore()
+                .free();
     }
 
 

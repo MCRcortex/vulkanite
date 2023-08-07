@@ -97,4 +97,13 @@ public class VUtil {
             throw new AssertionError("Gl error: "+e);
         }
     }
+
+
+    public static int alignUp(int size, int alignment) {
+        return (size + alignment - 1) & -alignment;
+    }
+
+    public static long alignUp(long size, long alignment) {
+        return (size + alignment - 1) & -alignment;
+    }
 }
