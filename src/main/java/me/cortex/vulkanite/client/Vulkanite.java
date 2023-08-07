@@ -6,7 +6,7 @@ import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import me.cortex.vulkanite.mixin.MixinRenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
-import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import org.lwjgl.vulkan.VkPhysicalDeviceAccelerationStructureFeaturesKHR;
 import org.lwjgl.vulkan.VkPhysicalDeviceBufferDeviceAddressFeaturesKHR;
 import org.lwjgl.vulkan.VkPhysicalDeviceRayQueryFeaturesKHR;
@@ -46,12 +46,12 @@ public class Vulkanite {
         ctx = createVulkanContext();
 
         //Fill in the shared index buffer with a large count so we (hopefully) dont have to worry about it anymore
-        SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 10000);
+        SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 30000);
 
         accelerationManager = new AccelerationManager(ctx, 1);
     }
 
-    public void upload(List<ChunkBuildResult> results) {
+    public void upload(List<ChunkBuildOutput> results) {
         /*
         if (((IAccelerationBuildResult)result).getAccelerationGeometryData() == null)
             return;//TODO: delete the chunk section in this case then or something

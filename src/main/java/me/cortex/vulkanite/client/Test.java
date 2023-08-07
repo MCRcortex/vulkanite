@@ -2,6 +2,8 @@ package me.cortex.vulkanite.client;
 
 import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
+import me.cortex.vulkanite.lib.pipeline.DescriptorSetLayoutBuilder;
+import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.GL;
@@ -118,6 +120,14 @@ public class Test {
         mem.flush();
 
         SharedQuadVkIndexBuffer.getIndexBuffer(context, 10000);
+
+
+        var layout = new DescriptorSetLayoutBuilder()
+                .binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)
+                .build(context);
+
+        var pipeline = new RaytracePipelineBuilder()
+                .build(context);
     }
 
 

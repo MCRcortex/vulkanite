@@ -2,6 +2,7 @@ package me.cortex.vulkanite.acceleration;
 
 //TLAS manager, ingests blas build requests and manages builds and syncs the tlas
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
@@ -29,6 +30,8 @@ public class AccelerationTLASManager {
     private final int queue;
     private final VCommandPool singleUsePool;
 
+    private final List<VAccelerationStructure> structuresToRelease = new ArrayList<>();
+
     private VAccelerationStructure currentTLAS;
 
     public AccelerationTLASManager(VContext context, int queue) {
@@ -54,7 +57,15 @@ public class AccelerationTLASManager {
 
     //TODO: cleanup, this is very messy
     public VSemaphore buildTLAS(VSemaphore renderLink, VSemaphore[] blocking) {
+        RenderSystem.assertOnRenderThread();
+
         singleUsePool.doReleases();
+
+        if (buildDataManager.sectionCount() == 0) {
+            if (blocking.length != 0)
+                throw new IllegalStateException();
+            return renderLink;
+        }
 
         //NOTE: renderLink is required to ensure that we are not overriding memory that is actively being used for frames
         // should have a VK_PIPELINE_STAGE_TRANSFER_BIT blocking bit
@@ -122,7 +133,7 @@ public class AccelerationTLASManager {
                     buildSizesInfo);
 
             VAccelerationStructure tlas = context.memory.createAcceleration(buildSizesInfo.accelerationStructureSize(), 256,
-                    0, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
+                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
 
             //TODO: instead of making a new scratch buffer, try to reuse
             // ACTUALLY wait since we doing the on fence free thing, we dont have to worry about that and it should
@@ -148,16 +159,39 @@ public class AccelerationTLASManager {
             VSemaphore chain = context.sync.createBinarySemaphore();
 
             cmd.end();
-            int[] waitingStage = new int[blocking.length];
+
+            int[] waitingStage = new int[blocking.length + (renderLink==null?0:1)];
+            VSemaphore[] allBlocking = new VSemaphore[waitingStage.length];
+            System.arraycopy(blocking, 0, allBlocking,0, blocking.length);
+
+            if (renderLink != null) {
+                allBlocking[waitingStage.length-1] = renderLink;
+            }
+
             Arrays.fill(waitingStage, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_TRANSFER_BIT);
-            context.cmd.submit(queue, new VCmdBuff[]{cmd}, blocking, waitingStage, new VSemaphore[]{chain}, fence);
+            context.cmd.submit(queue, new VCmdBuff[]{cmd}, allBlocking, waitingStage, new VSemaphore[]{chain}, fence);
 
             VAccelerationStructure oldTLAS = currentTLAS;
             currentTLAS = tlas;
+
+            List<VAccelerationStructure> capturedList = new ArrayList<>(structuresToRelease);
+            structuresToRelease.clear();
             context.sync.addCallback(fence, () -> {
                 scratchBuffer.free();
-                oldTLAS.free();
+                if (oldTLAS != null) {
+                    oldTLAS.free();
+                }
+                fence.free();
                 cmd.enqueueFree();
+
+                for (var as : capturedList) {
+                    as.free();
+                }
+
+                //Release all the semaphores NOTE! THIS INCLUDES renderLink
+                for (var sem : allBlocking) {
+                    sem.free();
+                }
             });
 
             return chain;
@@ -283,7 +317,7 @@ public class AccelerationTLASManager {
                return new Holder(alloc(), a);
             });
             if (holder.structure != null) {
-                //TODO: enqueue holder.structure to be freed on next fence op
+                structuresToRelease.add(holder.structure);
             }
             holder.structure = result.structure();
 
@@ -305,6 +339,9 @@ public class AccelerationTLASManager {
             var holder = tmp.remove(section);
             if (holder == null)
                 return;
+
+            structuresToRelease.add(holder.structure);
+
             //TODO: enqueue holder.structure to be freed on next fence op
             free(holder.id);
         }

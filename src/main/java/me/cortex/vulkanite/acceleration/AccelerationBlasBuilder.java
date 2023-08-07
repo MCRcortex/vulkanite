@@ -14,8 +14,7 @@ import me.cortex.vulkanite.lib.other.VQueryPool;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
-import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
-import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPass;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
@@ -184,7 +183,7 @@ public class AccelerationBlasBuilder {
 
 
                     var structure = context.memory.createAcceleration(buildSizesInfo.accelerationStructureSize(), 256, //TODO: dont hardcode alignment
-                            0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+                            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
                     var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -273,7 +272,7 @@ public class AccelerationBlasBuilder {
 
                     for (int idx = 0; idx < compactedSizes.length; idx++) {
                         var as = context.memory.createAcceleration(compactedSizes[idx], 256,//TODO: dont hardcode alignment
-                                0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+                                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
                         vkCmdCopyAccelerationStructureKHR(cmd.buffer, VkCopyAccelerationStructureInfoKHR.calloc(stack).sType$Default()
                                 .src(accelerationStructures[idx].structure)
@@ -325,9 +324,9 @@ public class AccelerationBlasBuilder {
     }
 
     //Enqueues jobs of section blas builds
-    public void enqueue(List<ChunkBuildResult> batch) {
+    public void enqueue(List<ChunkBuildOutput> batch) {
         List<BLASBuildJob> jobs = new ArrayList<>(batch.size());
-        for (ChunkBuildResult cbr : batch) {
+        for (ChunkBuildOutput cbr : batch) {
             var acbr = ((IAccelerationBuildResult)cbr).getAccelerationGeometryData();
             if (acbr == null)
                 continue;

@@ -7,6 +7,8 @@ import org.lwjgl.util.vma.*;
 import org.lwjgl.vulkan.*;
 
 import java.nio.LongBuffer;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -160,17 +162,29 @@ public class VmaAllocator {
             return device;
         }
 
+        //TODO: FIXME: find a better way to synchronize this, since it needs to be very fast
+        private static final Lock MAP_UNMAP_LOCK = new ReentrantLock();
         //TODO: Maybe put the following 3 in VBuffer
         public long map() {
-            try(var stack = stackPush()) {
-                PointerBuffer res = stack.callocPointer(1);
-                _CHECK_(vmaMapMemory(allocator, allocation, res));
-                return res.get(0);
+            MAP_UNMAP_LOCK.lock();
+            try {
+                try(var stack = stackPush()) {
+                    PointerBuffer res = stack.callocPointer(1);
+                        _CHECK_(vmaMapMemory(allocator, allocation, res));
+                    return res.get(0);
+                }
+            } finally {
+                MAP_UNMAP_LOCK.unlock();
             }
         }
 
         public void unmap() {
-            vmaUnmapMemory(allocator, allocation);
+            MAP_UNMAP_LOCK.lock();
+            try {
+                vmaUnmapMemory(allocator, allocation);
+            } finally {
+                MAP_UNMAP_LOCK.unlock();
+            }
         }
 
         public void flush(long offset, long size) {
