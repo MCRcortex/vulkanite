@@ -2,7 +2,7 @@ package me.cortex.vulkanite.mixin;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceLinkedOpenHashMap;
-import me.cortex.vulkanite.client.IAccelerationBuildResult;
+import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSectionManager;
@@ -16,7 +16,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
-import java.util.List;
 
 @Mixin(value = RenderSectionManager.class, remap = false)
 public abstract class MixinRenderSectionManager {

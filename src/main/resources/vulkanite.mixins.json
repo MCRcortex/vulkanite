@@ -7,12 +7,10 @@
     "MixinChunkBuildResult",
     "MixinChunkRenderRebuildTask",
     "MixinMinecraftClient",
-    "MixinRenderSection"
+    "MixinRenderSection",
+    "MixinRenderSectionManager"
   ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "mixins": [
-    "MixinRenderSectionManager"
-  ]
+  }
 }

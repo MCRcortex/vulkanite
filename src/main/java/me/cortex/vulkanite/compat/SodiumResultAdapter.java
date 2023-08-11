@@ -1,12 +1,10 @@
-package me.cortex.vulkanite.client;
+package me.cortex.vulkanite.compat;
 
-import me.jellysquid.mods.sodium.client.model.quad.properties.ModelQuadFacing;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import org.lwjgl.system.MemoryUtil;
 
-import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 

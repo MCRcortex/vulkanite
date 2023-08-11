@@ -4,7 +4,7 @@ package me.cortex.vulkanite.acceleration;
 //Multithreaded acceleration manager, builds blas's in a seperate queue,
 // then memory copies over to main, while doing compaction
 
-import me.cortex.vulkanite.client.IAccelerationBuildResult;
+import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
@@ -28,7 +28,6 @@ import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
-import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;

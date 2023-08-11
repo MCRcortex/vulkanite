@@ -176,7 +176,7 @@ public class RaytracePipelineBuilder {
 
                 // Groups in order of RayGen, Miss Groups, Hit Groups, and callable
                 // 1. Copy ray gen
-                memCopy(aHandles, ptr + rgenBase, handleSize);
+                memCopy(aHandles, ptr + rgenBase, handleSize);//TODO: FIXME: FINISH
                 // 2. Copy miss groups
                 //memCopy(aHandles + handleSize, ptr + hitGroupsBase + i * handleSizeAligned, handleSize);
                 // 3. Copy hit groups
@@ -186,9 +186,14 @@ public class RaytracePipelineBuilder {
 
                 sbtMap.unmap();
                 sbtMap.flush();
-            }
 
-            return new VRaytracePipeline();
+                return new VRaytracePipeline(context, pPipeline.get(0), pLayout.get(0), sbtMap,
+                        VkStridedDeviceAddressRegionKHR.calloc(),
+                        VkStridedDeviceAddressRegionKHR.calloc(),
+                        VkStridedDeviceAddressRegionKHR.calloc(),
+                        VkStridedDeviceAddressRegionKHR.calloc()
+                );
+            }
         }
     }
 }

@@ -1,8 +1,6 @@
 package me.cortex.vulkanite.mixin;
 
-import me.cortex.vulkanite.client.IAccelerationBuildResult;
-import me.cortex.vulkanite.client.SodiumResultAdapter;
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexFormat;
+import me.cortex.vulkanite.compat.SodiumResultAdapter;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildContext;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.tasks.ChunkBuilderMeshingTask;

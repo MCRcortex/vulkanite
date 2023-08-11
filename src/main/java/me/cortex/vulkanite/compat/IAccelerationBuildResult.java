@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.client;
+package me.cortex.vulkanite.compat;
 
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
