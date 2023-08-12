@@ -56,10 +56,18 @@ public class AccelerationTLASManager {
 
 
     //TODO: cleanup, this is very messy
+    //FIXME: in the case of no geometry create an empty tlas or something???
     public void buildTLAS(VSemaphore semIn, VSemaphore semOut, VSemaphore[] blocking) {
         RenderSystem.assertOnRenderThread();
 
         singleUsePool.doReleases();
+
+        if (buildDataManager.sectionCount() == 0) {
+            if (blocking.length != 0) {
+                throw new IllegalStateException();
+            }
+            return;
+        }
 
         //NOTE: renderLink is required to ensure that we are not overriding memory that is actively being used for frames
         // should have a VK_PIPELINE_STAGE_TRANSFER_BIT blocking bit

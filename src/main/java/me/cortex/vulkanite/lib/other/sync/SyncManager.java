@@ -55,7 +55,7 @@ public class SyncManager {
             _CHECK_(vkGetSemaphoreWin32HandleKHR(device,
                     VkSemaphoreGetWin32HandleInfoKHR.calloc(stack)
                         .sType$Default()
-                        .semaphore(res.get(0))
+                        .semaphore(semaphore)
                         .handleType(VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT),
                     pb));
 
@@ -69,7 +69,7 @@ public class SyncManager {
             if (glGetError() != GL_NO_ERROR)
                 throw new IllegalStateException();
 
-            return new VGSemaphore(device, res.get(0), glSemaphore);
+            return new VGSemaphore(device, semaphore, glSemaphore);
         }
     }
 

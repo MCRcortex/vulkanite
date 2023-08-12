@@ -51,6 +51,7 @@ public class Vulkanite {
         SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 30000);
 
         accelerationManager = new AccelerationManager(ctx, 1);
+        pipeline = new VulkanPipeline(ctx, accelerationManager);
     }
 
     public void upload(List<ChunkBuildOutput> results) {

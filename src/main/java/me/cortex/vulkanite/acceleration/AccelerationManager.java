@@ -46,6 +46,7 @@ public class AccelerationManager {
 
     public VAccelerationStructure buildTLAS(VSemaphore inLink, VSemaphore outLink) {
         tlasManager.buildTLAS(inLink, outLink, syncs.toArray(new VSemaphore[0]));
+        syncs.clear();
         return tlasManager.getTlas();
     }
 
