@@ -7,9 +7,10 @@
     "MixinChunkBuildResult",
     "MixinChunkRenderRebuildTask",
     "MixinMinecraftClient",
+    "MixinNewWorldRenderingPipeline",
     "MixinRenderSection",
     "MixinRenderSectionManager",
-    "MixinNewWorldRenderingPipeline"
+    "MixinRenderTarget"
   ],
   "injectors": {
     "defaultRequire": 1

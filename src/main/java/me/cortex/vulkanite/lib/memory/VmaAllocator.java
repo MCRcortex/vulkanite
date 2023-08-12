@@ -64,6 +64,10 @@ public class VmaAllocator {
         return new MemoryPool(chain.address());
     }
 
+
+    //TODO: FIXME: find a better way to synchronize this, since it needs to be very fast
+    private static final Lock ALLOCATOR_LOCK = new ReentrantLock();
+
     //NOTE: SHOULD ONLY BE USED TO ALLOCATE SHARED MEMORY AND STUFF, not recommended
     BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
         try (var stack = stackPush()) {
@@ -118,6 +122,7 @@ public class VmaAllocator {
         }
     }
 
+
     public abstract class Allocation {
         public final VmaAllocationInfo ai;
         public final long allocation;
@@ -154,7 +159,12 @@ public class VmaAllocator {
         @Override
         public void free() {
             //vkFreeMemory();
-            vmaDestroyBuffer(allocator, buffer, allocation);
+            ALLOCATOR_LOCK.lock();
+            try {
+                vmaDestroyBuffer(allocator, buffer, allocation);
+            } finally {
+                ALLOCATOR_LOCK.unlock();
+            }
             super.free();
         }
 
@@ -162,11 +172,9 @@ public class VmaAllocator {
             return device;
         }
 
-        //TODO: FIXME: find a better way to synchronize this, since it needs to be very fast
-        private static final Lock MAP_UNMAP_LOCK = new ReentrantLock();
         //TODO: Maybe put the following 3 in VBuffer
         public long map() {
-            MAP_UNMAP_LOCK.lock();
+            ALLOCATOR_LOCK.lock();
             try {
                 try(var stack = stackPush()) {
                     PointerBuffer res = stack.callocPointer(1);
@@ -174,16 +182,16 @@ public class VmaAllocator {
                     return res.get(0);
                 }
             } finally {
-                MAP_UNMAP_LOCK.unlock();
+                ALLOCATOR_LOCK.unlock();
             }
         }
 
         public void unmap() {
-            MAP_UNMAP_LOCK.lock();
+            ALLOCATOR_LOCK.lock();
             try {
                 vmaUnmapMemory(allocator, allocation);
             } finally {
-                MAP_UNMAP_LOCK.unlock();
+                ALLOCATOR_LOCK.unlock();
             }
         }
 
@@ -197,7 +205,12 @@ public class VmaAllocator {
                         .memory(ai.deviceMemory())
                         .size(size)
                         .offset(ai.offset()+offset)));*/
-                vmaFlushAllocation(allocator, allocation, offset, size);
+                ALLOCATOR_LOCK.lock();
+                try {
+                    vmaFlushAllocation(allocator, allocation, offset, size);
+                } finally {
+                    ALLOCATOR_LOCK.unlock();
+                }
             }
         }
     }
@@ -212,7 +225,12 @@ public class VmaAllocator {
         @Override
         public void free() {
             //vkFreeMemory();
-            vmaDestroyImage(allocator, image, allocation);
+            ALLOCATOR_LOCK.lock();
+            try {
+                vmaDestroyImage(allocator, image, allocation);
+            } finally {
+                ALLOCATOR_LOCK.unlock();
+            }
             super.free();
         }
     }

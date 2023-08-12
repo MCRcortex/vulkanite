@@ -86,7 +86,7 @@ public class MemoryManager {
         }
     }
 
-    public void createSharedImage(int width, int height, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
+    public VGImage createSharedImage(int width, int height, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
         try (var stack = stackPush()) {
             var createInfo = VkImageCreateInfo
                     .calloc(stack)
@@ -121,6 +121,7 @@ public class MemoryManager {
             glTextureParameteri(glId, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
             _CHECK_GL_ERROR_();
+            return new VGImage(alloc, width, height, mipLevels, vkFormat, glFormat, glId, memoryObject);
         }
     }
 

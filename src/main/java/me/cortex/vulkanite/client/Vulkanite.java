@@ -72,6 +72,10 @@ public class Vulkanite {
         accelerationManager.updateTick();
     }
 
+    public VContext getCtx() {
+        return ctx;
+    }
+
     private static VContext createVulkanContext() {
         var init = new VInitializer("Vulkan test", "Vulkanite", 1, 3,
                 new String[]{VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
