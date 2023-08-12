@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.mixin;
 
 import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.compat.IRenderTargetVkGetter;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import net.coderbot.iris.gl.texture.InternalTextureFormat;
 import net.coderbot.iris.gl.texture.PixelFormat;
@@ -17,7 +18,7 @@ import static org.lwjgl.opengl.GL30C.GL_RGBA32F;
 import static org.lwjgl.vulkan.VK10.*;
 
 @Mixin(value = RenderTarget.class, remap = false)
-public abstract class MixinRenderTarget {
+public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
     @Shadow @Final private PixelFormat format;
     @Shadow @Final private InternalTextureFormat internalFormat;
 
@@ -91,5 +92,13 @@ public abstract class MixinRenderTarget {
         //TODO: block the gpu fully before deleting and resizing the textures
         vgMainTexture.free();
         vgAltTexture.free();
+    }
+
+    public VGImage getMain() {
+        return vgMainTexture;
+    }
+
+    public VGImage getAlt() {
+        return vgAltTexture;
     }
 }

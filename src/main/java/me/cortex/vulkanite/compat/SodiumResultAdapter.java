@@ -19,7 +19,7 @@ public class SodiumResultAdapter {
         for (var pass : buildResult.meshes.entrySet()) {
             var vertData = pass.getValue().getVertexData();
 
-            int stride = 20;//TODO: dont hardcode this
+            int stride = 40;//TODO: dont hardcode this
 
             if (vertData.getLength()%stride != 0)
                 throw new IllegalStateException("Mismatch length and stride");
@@ -36,6 +36,7 @@ public class SodiumResultAdapter {
                     float x = decodePosition(MemoryUtil.memGetShort(base));
                     float y = decodePosition(MemoryUtil.memGetShort(base + 2));
                     float z = decodePosition(MemoryUtil.memGetShort(base + 4));
+
                     MemoryUtil.memPutFloat(addr, x);
                     MemoryUtil.memPutFloat(addr + 4, y);
                     MemoryUtil.memPutFloat(addr + 8, z);

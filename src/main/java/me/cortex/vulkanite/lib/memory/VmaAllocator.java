@@ -74,14 +74,19 @@ public class VmaAllocator {
             LongBuffer pb = stack.mallocLong(1);
             PointerBuffer pa = stack.mallocPointer(1);
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-            _CHECK_(
-                    vmaCreateBuffer(allocator,
-                            bufferCreateInfo,
-                            allocationCreateInfo.pool(pool),
-                            pb,
-                            pa,
-                            vai),
-                    "Failed to allocate buffer");
+            ALLOCATOR_LOCK.lock();
+            try {
+                _CHECK_(
+                        vmaCreateBuffer(allocator,
+                                bufferCreateInfo,
+                                allocationCreateInfo.pool(pool),
+                                pb,
+                                pa,
+                                vai),
+                        "Failed to allocate buffer");
+            } finally {
+                ALLOCATOR_LOCK.unlock();
+            }
             return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
         }
     }
@@ -92,15 +97,20 @@ public class VmaAllocator {
             LongBuffer pb = stack.mallocLong(1);
             PointerBuffer pa = stack.mallocPointer(1);
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-            _CHECK_(
-                    vmaCreateBufferWithAlignment(allocator,
-                            bufferCreateInfo,
-                            allocationCreateInfo.pool(pool),
-                            alignment,
-                            pb,
-                            pa,
-                            vai),
-                    "Failed to allocate buffer");
+            ALLOCATOR_LOCK.lock();
+            try {
+                _CHECK_(
+                        vmaCreateBufferWithAlignment(allocator,
+                                bufferCreateInfo,
+                                allocationCreateInfo.pool(pool),
+                                alignment,
+                                pb,
+                                pa,
+                                vai),
+                        "Failed to allocate buffer");
+            } finally {
+                ALLOCATOR_LOCK.unlock();
+            }
             return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
         }
     }

@@ -8,6 +8,7 @@ import org.lwjgl.vulkan.VkStridedDeviceAddressRegionKHR;
 
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.vkCmdTraceRaysKHR;
+import static org.lwjgl.vulkan.VK10.vkCmdBindDescriptorSets;
 import static org.lwjgl.vulkan.VK10.vkCmdBindPipeline;
 
 public class VRaytracePipeline {
@@ -40,6 +41,10 @@ public class VRaytracePipeline {
 
     public void trace(VCmdBuff cmd, int width, int height, int depth) {
         vkCmdTraceRaysKHR(cmd.buffer, gen, miss, hit, callable, width, height, depth);
+    }
+
+    public void bindDSet(VCmdBuff cmd, long... descs) {
+        vkCmdBindDescriptorSets(cmd.buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, layout, 0, descs, null);
     }
 
     public void free(VFence fence) {

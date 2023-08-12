@@ -27,6 +27,8 @@ public class VBuffer {
     }
 
     public long deviceAddress() {
+        if (allocation.deviceAddress == -1)
+            throw new IllegalStateException();
         return allocation.deviceAddress;
     }
 

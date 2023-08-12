@@ -15,6 +15,8 @@ import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import me.jellysquid.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
+import me.jellysquid.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
@@ -36,7 +38,7 @@ import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
 public class AccelerationBlasBuilder {
     private final VContext context;
-    private record BLASTriangleData(int quadCount, NativeBuffer geometry) {}
+    private record BLASTriangleData(int quadCount, NativeBuffer geometry, int geometryFlags) {}
     private record BLASBuildJob(List<BLASTriangleData> geometries, RenderSection section, long time) {}
     public record BLASBuildResult(VAccelerationStructure structure, RenderSection section, long time) {}
     public record BLASBatchResult(List<BLASBuildResult> results, VSemaphore semaphore) { }
@@ -153,10 +155,12 @@ public class AccelerationBlasBuilder {
                                         .indexData(indexData)
                                         .indexType(indexType)))
                                 .geometryType(VK_GEOMETRY_TYPE_TRIANGLES_KHR)
-                                .flags();//TODO: ADD VkGeometryFlagsKHR VK_GEOMETRY_OPAQUE_BIT_KHR
+                                .flags(geometry.geometryFlags);//TODO: ADD VkGeometryFlagsKHR VK_GEOMETRY_OPAQUE_BIT_KHR
 
                         maxPrims.put(geometry.quadCount * 2);
                         br.primitiveCount(geometry.quadCount * 2);
+                        //maxPrims.put(2);
+                        //br.primitiveCount(2);
                     }
 
                     geometryInfos.rewind();
@@ -181,12 +185,12 @@ public class AccelerationBlasBuilder {
                             buildSizesInfo);
 
 
-                    var structure = context.memory.createAcceleration(buildSizesInfo.accelerationStructureSize(), 256, //TODO: dont hardcode alignment
+                    var structure = context.memory.createAcceleration(buildSizesInfo.accelerationStructureSize(), 256,
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
                     var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256);//TODO: dont hardcode alignment
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256);
 
                     bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.deviceAddress()));
                     bi.dstAccelerationStructure(structure.structure);
@@ -209,7 +213,8 @@ public class AccelerationBlasBuilder {
                     vkCmdBuildAccelerationStructuresKHR(cmd.buffer, buildInfos, buildRanges);
 
                     //TODO: should probably do memory barrier to read access
-                    vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1).sType$Default()
+                    vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1)
+                            .sType$Default()
                             .srcAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)
                             .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR), null, null);
 
@@ -227,11 +232,14 @@ public class AccelerationBlasBuilder {
 
                     VFence buildFence = context.sync.createFence();
 
+
+
                     cmd.end();
                     context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd}, new VSemaphore[0], new int[0],
                             new VSemaphore[]{link},
                             buildFence);
 
+                    //vkDeviceWaitIdle(context.device);
                     {
                         //We need to wait for the fence which signals that the build has finished and we can query the result
                         // TODO: find a cleaner way to wait on the query results (tho i think waiting on a fence is realistically the easiest thing to do)
@@ -261,6 +269,8 @@ public class AccelerationBlasBuilder {
                 VAccelerationStructure[] compactedAS = new VAccelerationStructure[jobs.size()];
 
                 List<BLASBuildResult> results = new ArrayList<>();
+
+                //vkDeviceWaitIdle(context.device);
 
                 //---------------------
                 {
@@ -330,9 +340,10 @@ public class AccelerationBlasBuilder {
             if (acbr == null)
                 continue;
             List<BLASTriangleData> buildData = new ArrayList<>();
-            for (var passData : acbr.values()) {
+            for (var entry : acbr.entrySet()) {
                 //TODO: dont hardcode the stride size
-                buildData.add(new BLASTriangleData((passData.getLength()/12)/4, passData));
+                int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID?VK_GEOMETRY_OPAQUE_BIT_KHR:0;
+                buildData.add(new BLASTriangleData((entry.getValue().getLength()/12)/4, entry.getValue(), flag));
             }
             jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime));
         }

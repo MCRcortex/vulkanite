@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.pipeline;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
@@ -17,7 +18,6 @@ import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIA
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 import static org.lwjgl.vulkan.VK10.*;
-import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
 
 public class RaytracePipelineBuilder {
 
@@ -143,6 +143,9 @@ public class RaytracePipelineBuilder {
                 long groupBaseAlignment = props.shaderGroupBaseAlignment();
                 long handleSize = props.shaderGroupHandleSize();
                 long handleSizeAligned = alignUp(handleSize, props.shaderGroupHandleAlignment());
+                if (handleSizeAligned != handleSize) {
+                    throw new IllegalStateException("Painpoint, handleSizeAligned != handleSize");
+                }
 
                 int totalGroups = groupsArr.capacity();
 
@@ -154,7 +157,7 @@ public class RaytracePipelineBuilder {
                 long callGroupBase = alignUp(hitGroupsBase + handleSizeAligned * hitGroupsCount, groupBaseAlignment);
                 long callGroupCount = callGroups.size();
 
-                long sbtSize = alignUp(missGroupBase + missGroupCount * handleSizeAligned, groupBaseAlignment);
+                long sbtSize = alignUp(callGroupBase + callGroupCount * handleSizeAligned, groupBaseAlignment);
 
                 ByteBuffer handles = stack.malloc(totalGroups * (int)handleSize);
                 _CHECK_(vkGetRayTracingShaderGroupHandlesKHR(context.device, pPipeline.get(0), 0, totalGroups, handles),
@@ -174,21 +177,25 @@ public class RaytracePipelineBuilder {
                 // Groups in order of RayGen, Miss Groups, Hit Groups, and callable
                 // 1. Copy ray gen
                 memCopy(aHandles, ptr + rgenBase, handleSize);//TODO: FIXME: FINISH
+                aHandles += handleSize;
                 // 2. Copy miss groups
-                //memCopy(aHandles + handleSize, ptr + hitGroupsBase + i * handleSizeAligned, handleSize);
+                memCopy(aHandles, ptr + missGroupBase, handleSize * missGroupCount);
+                aHandles += handleSize * missGroupCount;
                 // 3. Copy hit groups
-                //memCopy(aHandles + (indexInPipeline++) * handleSize, aHandlesForGpu + missGroupBase + i * handleSizeAligned, handleSize);
+                memCopy(aHandles, ptr + hitGroupsBase, handleSize);
+                aHandles += handleSize * hitGroupsCount;
                 // 4. Copy callable
-                //memCopy(aHandles + (indexInPipeline++) * handleSize, aHandlesForGpu + callGroupBase + i * handleSizeAligned, handleSize);
+                memCopy(aHandles, ptr + callGroupBase, handleSize);
+                aHandles += handleSize * missGroupCount;
 
                 sbtMap.unmap();
                 sbtMap.flush();
 
                 return new VRaytracePipeline(context, pPipeline.get(0), pLayout.get(0), sbtMap,
-                        VkStridedDeviceAddressRegionKHR.calloc(),
-                        VkStridedDeviceAddressRegionKHR.calloc(),
-                        VkStridedDeviceAddressRegionKHR.calloc(),
-                        VkStridedDeviceAddressRegionKHR.calloc()
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + rgenBase, handleSizeAligned, handleSizeAligned),
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + missGroupBase, handleSizeAligned,handleSizeAligned * missGroupBase),
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + hitGroupsBase, handleSizeAligned,handleSizeAligned * hitGroupsBase),
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + callGroupBase, handleSizeAligned,handleSizeAligned * callGroupBase)
                 );
             }
         }

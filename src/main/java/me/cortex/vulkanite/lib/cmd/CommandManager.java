@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.cmd;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
@@ -45,6 +46,10 @@ public class CommandManager {
 
     //TODO: if its a single use command buffer, automatically add the required fences and stuff to free the command buffer once its done
     public void submit(int queueId, VCmdBuff[] cmdBuffs, VSemaphore[] waits, int[] waitStages, VSemaphore[] triggers, VFence fence) {
+        if (queueId == 0) {
+            RenderSystem.assertOnRenderThread();
+        }
+
         try (var stack = stackPush()) {
             LongBuffer waitSemaphores = stack.mallocLong(waits.length);
             LongBuffer signalSemaphores = stack.mallocLong(triggers.length);

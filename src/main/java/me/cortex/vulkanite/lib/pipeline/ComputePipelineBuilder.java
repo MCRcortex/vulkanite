@@ -1,11 +1,9 @@
 package me.cortex.vulkanite.lib.pipeline;
 
 import me.cortex.vulkanite.lib.base.VContext;
-import me.cortex.vulkanite.lib.memory.VBuffer;
-import org.lwjgl.system.MemoryUtil;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import org.lwjgl.vulkan.*;
 
-import java.nio.ByteBuffer;
 import java.nio.LongBuffer;
 import java.util.*;
 
@@ -13,9 +11,6 @@ import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static me.cortex.vulkanite.lib.other.VUtil.alignUp;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memCopy;
-import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
-import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 import static org.lwjgl.vulkan.VK10.*;
 
 public class ComputePipelineBuilder {

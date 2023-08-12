@@ -2,6 +2,7 @@ package me.cortex.vulkanite.client;
 
 import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
+import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
 import me.cortex.vulkanite.lib.pipeline.*;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
@@ -16,7 +17,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 
 import static org.lwjgl.glfw.GLFW.*;
