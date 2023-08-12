@@ -2,6 +2,7 @@ package me.cortex.vulkanite.client;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
 import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
+import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import me.cortex.vulkanite.mixin.MixinRenderSection;
@@ -41,6 +42,7 @@ public class Vulkanite {
     private final VContext ctx;
 
     private AccelerationManager accelerationManager;
+    public VulkanPipeline pipeline;
 
     public Vulkanite() {
         ctx = createVulkanContext();
@@ -66,8 +68,6 @@ public class Vulkanite {
 
     public void renderTick() {
         ctx.sync.checkFences();
-
-        //TODO: move this to final position (as early as possible before the actual ray rendering to give it time to build (doesnt need to be gl synced))
         accelerationManager.updateTick();
     }
 

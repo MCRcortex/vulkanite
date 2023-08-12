@@ -2,10 +2,7 @@ package me.cortex.vulkanite.client;
 
 import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
-import me.cortex.vulkanite.lib.pipeline.DescriptorSetLayoutBuilder;
-import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
-import me.cortex.vulkanite.lib.pipeline.ShaderModule;
-import me.cortex.vulkanite.lib.pipeline.VShader;
+import me.cortex.vulkanite.lib.pipeline.*;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.GL;
@@ -147,6 +144,18 @@ public class Test {
 
         context.sync.createSharedBinarySemaphore()
                 .free();
+
+
+        var cl = new DescriptorSetLayoutBuilder()
+                .binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)//camera data
+                .build(context);
+
+        var compute = VShader.compileLoad(context, Files.readString(new File("run/compute.glsl").toPath()), VK_SHADER_STAGE_COMPUTE_BIT);
+        var comppipe = new ComputePipelineBuilder()
+                .set(compute.named())
+                .addLayout(cl)
+                .build(context);
+
     }
 
 

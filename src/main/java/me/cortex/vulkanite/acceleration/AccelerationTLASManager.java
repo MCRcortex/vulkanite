@@ -56,16 +56,10 @@ public class AccelerationTLASManager {
 
 
     //TODO: cleanup, this is very messy
-    public VSemaphore buildTLAS(VSemaphore renderLink, VSemaphore[] blocking) {
+    public void buildTLAS(VSemaphore semIn, VSemaphore semOut, VSemaphore[] blocking) {
         RenderSystem.assertOnRenderThread();
 
         singleUsePool.doReleases();
-
-        if (buildDataManager.sectionCount() == 0) {
-            if (blocking.length != 0)
-                throw new IllegalStateException();
-            return renderLink;
-        }
 
         //NOTE: renderLink is required to ensure that we are not overriding memory that is actively being used for frames
         // should have a VK_PIPELINE_STAGE_TRANSFER_BIT blocking bit
@@ -156,20 +150,16 @@ public class AccelerationTLASManager {
                     buildInfo,
                     stack.pointers(buildRanges));
 
-            VSemaphore chain = context.sync.createBinarySemaphore();
-
             cmd.end();
 
-            int[] waitingStage = new int[blocking.length + (renderLink==null?0:1)];
+            int[] waitingStage = new int[blocking.length + 1];
             VSemaphore[] allBlocking = new VSemaphore[waitingStage.length];
             System.arraycopy(blocking, 0, allBlocking,0, blocking.length);
 
-            if (renderLink != null) {
-                allBlocking[waitingStage.length-1] = renderLink;
-            }
+            allBlocking[waitingStage.length-1] = semIn;
 
             Arrays.fill(waitingStage, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR | VK_PIPELINE_STAGE_TRANSFER_BIT);
-            context.cmd.submit(queue, new VCmdBuff[]{cmd}, allBlocking, waitingStage, new VSemaphore[]{chain}, fence);
+            context.cmd.submit(queue, new VCmdBuff[]{cmd}, allBlocking, waitingStage, new VSemaphore[]{semOut}, fence);
 
             VAccelerationStructure oldTLAS = currentTLAS;
             currentTLAS = tlas;
@@ -188,14 +178,16 @@ public class AccelerationTLASManager {
                     as.free();
                 }
 
-                //Release all the semaphores NOTE! THIS INCLUDES renderLink
-                for (var sem : allBlocking) {
+                //Release all the semaphores from the blas build system
+                for (var sem : blocking) {
                     sem.free();
                 }
             });
-
-            return chain;
         }
+    }
+
+    public VAccelerationStructure getTlas() {
+        return currentTLAS;
     }
 
     //Manages entries in the VkAccelerationStructureInstanceKHR buffer, ment to reuse as much as possible and be very efficient

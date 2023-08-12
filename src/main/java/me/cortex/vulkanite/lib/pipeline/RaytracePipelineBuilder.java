@@ -73,10 +73,7 @@ public class RaytracePipelineBuilder {
                 for (var shader : shaders) {
                     var struct = shaderStages.get(shader2id.size());
                     shader2id.put(shader, shader2id.size());
-                    struct.sType$Default()
-                            .stage(shader.shader().stage)
-                            .module(shader.shader().module)
-                            .pName(stack.UTF8(shader.name()));
+                    shader.setupStruct(stack, struct);
                 }
             }
 

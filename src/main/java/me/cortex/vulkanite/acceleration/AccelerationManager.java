@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.acceleration;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
@@ -27,25 +28,25 @@ public class AccelerationManager {
         blasBuilder.enqueue(results);
     }
 
-    private VSemaphore renderingChain;
+    private final List<VSemaphore> syncs = new LinkedList<>();
 
-    //This is the primary render thread tick, called once per frame updates the tlas
+    //This updates the tlas internal structure, DOES NOT INCLUDING BUILDING THE TLAS
     public void updateTick() {
         if (!blasResults.isEmpty()) {//If there are results
             //Atomicly collect the results from the queue
             List<AccelerationBlasBuilder.BLASBuildResult> results = new LinkedList<>();
-            List<VSemaphore> syncs = new LinkedList<>();
             while (!blasResults.isEmpty()) {
                 var batch = blasResults.poll();
                 results.addAll(batch.results());
                 syncs.add(batch.semaphore());
             }
             tlasManager.updateSections(results);
-
-            renderingChain = tlasManager.buildTLAS(renderingChain, syncs.toArray(new VSemaphore[0]));
         }
+    }
 
-        //tlasManager.buildTLAS(null, new VSemaphore[0]);
+    public VAccelerationStructure buildTLAS(VSemaphore inLink, VSemaphore outLink) {
+        tlasManager.buildTLAS(inLink, outLink, syncs.toArray(new VSemaphore[0]));
+        return tlasManager.getTlas();
     }
 
     public void sectionRemove(RenderSection section) {
