@@ -40,19 +40,19 @@ public abstract class MixinRenderSectionManager {
                     if (prev != null) {
                         var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
                         if (data != null)
-                            data.values().forEach(NativeBuffer::free);
+                            data.values().forEach(a->a.data().free());
                     }
                 } else {
                     //Else need to free the injected result
                     var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
                     if (data != null)
-                        data.values().forEach(NativeBuffer::free);
+                        data.values().forEach(a->a.data().free());
                 }
             } else {
                 //Else need to free the injected result
                 var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
                 if (data != null)
-                    data.values().forEach(NativeBuffer::free);
+                    data.values().forEach(a->a.data().free());
             }
         }
         Vulkanite.INSTANCE.upload(new ArrayList<>(map.values()));

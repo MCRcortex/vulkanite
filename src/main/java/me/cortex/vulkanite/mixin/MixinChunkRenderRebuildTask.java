@@ -16,7 +16,7 @@ public class MixinChunkRenderRebuildTask {
     @Inject(method = "execute(Lme/jellysquid/mods/sodium/client/render/chunk/compile/ChunkBuildContext;Lme/jellysquid/mods/sodium/client/util/task/CancellationToken;)Lme/jellysquid/mods/sodium/client/render/chunk/compile/ChunkBuildOutput;", at = @At("TAIL"))
     private void performExtraBuild(ChunkBuildContext buildContext, CancellationToken cancellationToken, CallbackInfoReturnable<ChunkBuildOutput> cir) {
         var buildResult = cir.getReturnValue();
-        SodiumResultAdapter.compute(buildResult);
         ((IAccelerationBuildResult)buildResult).setVertexFormat(((VertexFormatAccessor)buildContext.buffers).getVertexType());
+        SodiumResultAdapter.compute(buildResult);
     }
 }

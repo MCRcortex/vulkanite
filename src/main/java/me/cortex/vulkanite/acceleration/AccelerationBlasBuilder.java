@@ -140,8 +140,8 @@ public class AccelerationBlasBuilder {
 
 
                         VkDeviceOrHostAddressConstKHR vertexData = VkDeviceOrHostAddressConstKHR.calloc(stack).deviceAddress(buf.deviceAddress());
-                        int vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
-                        int vertexStride = 4*3;
+                        int vertexFormat = VK_FORMAT_R16G16B16_SFLOAT;//VK_FORMAT_R32G32B32_SFLOAT;
+                        int vertexStride = 2*3;
 
                         geometryInfo.geometry(VkAccelerationStructureGeometryDataKHR.calloc(stack)
                                 .triangles(VkAccelerationStructureGeometryTrianglesDataKHR.calloc(stack)
