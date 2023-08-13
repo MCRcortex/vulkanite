@@ -14,21 +14,23 @@ import java.util.Map;
 public class SodiumResultAdapter {
     public static void compute(ChunkBuildOutput buildResult) {
         var ebr = (IAccelerationBuildResult) buildResult;
-        Map<TerrainRenderPass, NativeBuffer> map = new HashMap<>();
+        Map<TerrainRenderPass, GeometryData> map = new HashMap<>();
         ebr.setAccelerationGeometryData(map);
         for (var pass : buildResult.meshes.entrySet()) {
             var vertData = pass.getValue().getVertexData();
 
-            int stride = 40;//TODO: dont hardcode this
+            int stride = ebr.getVertexFormat().getVertexFormat().getStride();
 
             if (vertData.getLength()%stride != 0)
                 throw new IllegalStateException("Mismatch length and stride");
             int vertices = vertData.getLength()/stride;
             if (vertices % 4 != 0)
                 throw new IllegalStateException("Non multiple 4 vertex count");
-            NativeBuffer geometryBuffer = new NativeBuffer(vertices*(4*3));
+
+            NativeBuffer geometryBuffer = new NativeBuffer(vertices*(2*3));
             long addr = MemoryUtil.memAddress(geometryBuffer.getDirectBuffer());
             long srcVert = MemoryUtil.memAddress(vertData.getDirectBuffer());
+
             for (var faceData : pass.getValue().getVertexRanges()) {
                 if (faceData == null) continue;
                 for (int i = 0; i < faceData.vertexCount(); i++) {
@@ -37,13 +39,13 @@ public class SodiumResultAdapter {
                     float y = decodePosition(MemoryUtil.memGetShort(base + 2));
                     float z = decodePosition(MemoryUtil.memGetShort(base + 4));
 
-                    MemoryUtil.memPutFloat(addr, x);
-                    MemoryUtil.memPutFloat(addr + 4, y);
-                    MemoryUtil.memPutFloat(addr + 8, z);
-                    addr += 12;
+                    MemoryUtil.memPutShort(addr, (short) x);
+                    MemoryUtil.memPutShort(addr + 2, (short) y);
+                    MemoryUtil.memPutShort(addr + 4, (short) z);
+                    addr += 6;
                 }
             }
-            map.put(pass.getKey(), geometryBuffer);
+            map.put(pass.getKey(), new GeometryData(vertices>>2, geometryBuffer));
         }
     }
 

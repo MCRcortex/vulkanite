@@ -343,7 +343,7 @@ public class AccelerationBlasBuilder {
             for (var entry : acbr.entrySet()) {
                 //TODO: dont hardcode the stride size
                 int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID?VK_GEOMETRY_OPAQUE_BIT_KHR:0;
-                buildData.add(new BLASTriangleData((entry.getValue().getLength()/12)/4, entry.getValue(), flag));
+                buildData.add(new BLASTriangleData(entry.getValue().quadCount(), entry.getValue().data(), flag));
             }
             jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime));
         }

@@ -324,7 +324,6 @@ public class AccelerationTLASManager {
             try (var stack = stackPush()) {
                 var asi = VkAccelerationStructureInstanceKHR.calloc(stack)
                         .mask(~0)
-                        .flags(VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR)
                         .instanceCustomIndex(holder.id)
                         .accelerationStructureReference(holder.structure.deviceAddress);
                 asi.transform()
@@ -342,7 +341,6 @@ public class AccelerationTLASManager {
 
             structuresToRelease.add(holder.structure);
 
-            //TODO: enqueue holder.structure to be freed on next fence op
             free(holder.id);
         }
     }

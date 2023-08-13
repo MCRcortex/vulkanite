@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.mixin;
 
+import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.compat.SodiumResultAdapter;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildContext;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
@@ -16,5 +17,6 @@ public class MixinChunkRenderRebuildTask {
     private void performExtraBuild(ChunkBuildContext buildContext, CancellationToken cancellationToken, CallbackInfoReturnable<ChunkBuildOutput> cir) {
         var buildResult = cir.getReturnValue();
         SodiumResultAdapter.compute(buildResult);
+        ((IAccelerationBuildResult)buildResult).setVertexFormat(((VertexFormatAccessor)buildContext.buffers).getVertexType());
     }
 }
