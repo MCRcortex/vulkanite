@@ -63,6 +63,9 @@ public class MemoryManager {
     // then the memory object should be reused multiple times, this is the corrent and more efficent way
     // that is, since `alloc.ai.deviceMemory()` is shared by multiple allocations, they can also share a single memory object
     public VGBuffer createSharedBuffer(long size, int usage, int properties) {
+        return createSharedBuffer(size, usage, properties, 0);
+    }
+    public VGBuffer createSharedBuffer(long size, int usage, int properties, int alignment) {
         try (var stack = stackPush()) {
             var alloc = shared.alloc(VkBufferCreateInfo
                             .calloc(stack)
@@ -74,7 +77,8 @@ public class MemoryManager {
                                     .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT)),
                     VmaAllocationCreateInfo.calloc(stack)
                             .usage(VMA_MEMORY_USAGE_AUTO)
-                            .requiredFlags(properties));
+                            .requiredFlags(properties),
+                    alignment);
 
             int memoryObject = glCreateMemoryObjectsEXT();
             importMemoryWin32(memoryObject, alloc);

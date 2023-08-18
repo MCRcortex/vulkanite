@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.client.rendering;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
@@ -96,6 +97,7 @@ public class VulkanPipeline {
             var rgs = VShader.compileLoad(ctx, Files.readString(new File("raygen.glsl").toPath()), VK_SHADER_STAGE_RAYGEN_BIT_KHR);
             var rms = VShader.compileLoad(ctx, Files.readString(new File("raymiss.glsl").toPath()), VK_SHADER_STAGE_MISS_BIT_KHR);
             var rchs = VShader.compileLoad(ctx, Files.readString(new File("raychit.glsl").toPath()), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+            var rahs = VShader.compileLoad(ctx, Files.readString(new File("rayahit.glsl").toPath()), VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
 
             raytracePipeline = new RaytracePipelineBuilder()
                     .addLayout(layout)
@@ -131,9 +133,10 @@ public class VulkanPipeline {
         }
 
         var out = ctx.sync.createSharedBinarySemaphore();
-
+        VBuffer uboBuffer;
+        VBuffer refBuffer;
         {
-            VBuffer uboBuffer = ctx.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            uboBuffer = ctx.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             long ptr = uboBuffer.map();
             MemoryUtil.memSet(ptr, 0, 1024);
             {
@@ -174,7 +177,7 @@ public class VulkanPipeline {
             uboBuffer.flush();
 
 
-            VBuffer refBuffer = ctx.memory.createBuffer(1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,16);
+            refBuffer = ctx.memory.createBuffer(1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,16);
 
             long desc = descriptors.get(fidx);
 
@@ -266,12 +269,23 @@ public class VulkanPipeline {
             cmd.end();
             var fence = ctx.sync.createFence();
             ctx.cmd.submit(0, new VCmdBuff[]{cmd}, new VSemaphore[]{tlasLink}, new int[]{VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR}, new VSemaphore[]{out}, fence);
+
+
+
             ctx.sync.addCallback(fence, ()->{
                 tlasLink.free();
                 in.free();
                 cmd.enqueueFree();
                 fence.free();
+
+
                 //TODO: figure out how to free the out semaphore
+                uboBuffer.free();
+                refBuffer.free();
+            });
+
+            Vulkanite.INSTANCE.addSyncedCallback(()->{
+                out.free();//Hack but this works since this is managed by the gl instance it will have finished being used before its freed
             });
         }
 
@@ -280,5 +294,6 @@ public class VulkanPipeline {
 
         fidx++;
         fidx %= 10;
+
     }
 }

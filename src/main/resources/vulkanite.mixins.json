@@ -6,16 +6,18 @@
   "client": [
     "MixinChunkBuildResult",
     "MixinChunkRenderRebuildTask",
+    "MixinCommandList",
+    "MixinGlBufferArena",
+    "MixinGLRenderDevice",
     "MixinMinecraftClient",
+    "MixinMutableBuffer",
     "MixinNewWorldRenderingPipeline",
     "MixinRenderSection",
     "MixinRenderSectionManager",
-    "MixinRenderTarget"
+    "MixinRenderTarget",
+    "VertexFormatAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "mixins": [
-    "VertexFormatAccessor"
-  ]
+  }
 }

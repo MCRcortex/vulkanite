@@ -40,6 +40,7 @@ public class Vulkanite {
     public static final Vulkanite INSTANCE = new Vulkanite();
 
     private final VContext ctx;
+    private final ArbitarySyncPointCallback fencedCallback = new ArbitarySyncPointCallback();
 
     private AccelerationManager accelerationManager;
     public VulkanPipeline pipeline;
@@ -70,10 +71,15 @@ public class Vulkanite {
     public void renderTick() {
         ctx.sync.checkFences();
         accelerationManager.updateTick();
+        fencedCallback.tick();
     }
 
     public VContext getCtx() {
         return ctx;
+    }
+
+    public void addSyncedCallback(Runnable callback) {
+        fencedCallback.enqueue(callback);
     }
 
     private static VContext createVulkanContext() {

@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
@@ -26,6 +27,17 @@ public abstract class MixinRenderSectionManager {
         for (var section : sectionByPosition.values()) {
             Vulkanite.INSTANCE.sectionRemove(section);
         }
+    }
+
+    @Redirect(method = "destroy", at = @At(value = "INVOKE", target = "Lme/jellysquid/mods/sodium/client/render/chunk/compile/ChunkBuildOutput;delete()V"))
+    private void destroyAccelerationData(ChunkBuildOutput instance) {
+        var data = ((IAccelerationBuildResult)instance).getAccelerationGeometryData();
+        if (data != null) {
+            data.values().forEach(entry->entry.data().free());
+        }
+        instance.delete();
+
+        //TODO: need to ingest and cleanup all the blas builds and tlas updates
     }
 
     @Inject(method = "processChunkBuildResults", at = @At("HEAD"))
