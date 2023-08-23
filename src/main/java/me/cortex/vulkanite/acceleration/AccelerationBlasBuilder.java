@@ -92,6 +92,7 @@ public class AccelerationBlasBuilder {
                     }
                 }
             }
+            sinlgeUsePool.doReleases();
             if (jobs.size() > 100) {
                 System.err.println("EXCESSIVE JOBS FOR SOME REASON AAAAAAAAAA");
                 //while (true);
