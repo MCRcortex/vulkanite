@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.mixin;
+package me.cortex.vulkanite.mixin.iris;
 
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IRenderTargetVkGetter;

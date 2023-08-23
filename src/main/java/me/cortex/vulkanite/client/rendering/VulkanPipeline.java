@@ -2,6 +2,7 @@ package me.cortex.vulkanite.client.rendering;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
 import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
@@ -16,7 +17,9 @@ import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
 import me.cortex.vulkanite.lib.pipeline.VShader;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -87,7 +90,7 @@ public class VulkanPipeline {
                     .binding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)//funni acceleration buffer
                     .binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL)//funni buffer buffer
                     .binding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)//output texture
-                    //.binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
+                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
                     .build(ctx);
 
             //TODO: use frameahead count instead of just... 10
@@ -103,7 +106,7 @@ public class VulkanPipeline {
                     .addLayout(layout)
                     .setRayGen(rgs.named())
                     .addMiss(rms.named())
-                    .addHit(rchs.named(), null, null)
+                    .addHit(rchs.named(), rahs.named(), null)
                     .build(ctx, 1);
 
         } catch (Exception e) {
@@ -113,11 +116,21 @@ public class VulkanPipeline {
 
 
     private VImageView view;
+    private VImageView blockView;
+
+    private VSemaphore previousSemaphore;
     public void renderPostShadows(VGImage outImg, Camera camera) {
+
         this.singleUsePool.doReleases();
         if (view == null || outImg != view.image) {
             //TODO: free the old image with a fence or something kasjdhglkasjdg
             view = new VImageView(ctx, outImg);
+        }
+
+        var blockImage = ((IVGImage)MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"))).getVGImage();
+        if (blockView == null || blockView.image != blockImage) {
+            //TODO: free the old image with a fence or something kasjdhglkasjdg
+            blockView = new VImageView(ctx, blockImage);
         }
 
         //TODO:FIXME: this creates a memory leak every time this is run
@@ -183,7 +196,7 @@ public class VulkanPipeline {
 
             try (var stack = stackPush()) {
                 VkWriteDescriptorSet.Buffer writeUpdates = VkWriteDescriptorSet
-                        .calloc(4, stack);
+                        .calloc(5, stack);
                 {
                     writeUpdates.get(0)
                             .sType$Default()
@@ -228,7 +241,7 @@ public class VulkanPipeline {
                                     .calloc(1, stack)
                                     .imageLayout(VK_IMAGE_LAYOUT_GENERAL)
                                     .imageView(view.view));
-                    /*
+
                     writeUpdates.get(4)
                             .sType$Default()
                             .dstBinding(4)
@@ -239,8 +252,7 @@ public class VulkanPipeline {
                                     .calloc(1, stack)
                                     .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
                                     .sampler(sampler)
-                                    .imageView(0));
-                    */
+                                    .imageView(blockView.view));
                 }
 
                 vkUpdateDescriptorSets(ctx.device, writeUpdates, null);
@@ -252,14 +264,22 @@ public class VulkanPipeline {
 
             try (var stack = stackPush()) {
                 vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 0, null, null,
-                        VkImageMemoryBarrier.calloc(1, stack)
+                        VkImageMemoryBarrier.calloc(2, stack).apply(0, a->a
                                 .sType$Default()
                                 .image(view.image.image())
                                 .oldLayout(VK_IMAGE_LAYOUT_UNDEFINED)
                                 .newLayout(VK_IMAGE_LAYOUT_GENERAL)
                                 .srcAccessMask(0)
                                 .dstAccessMask(VK_ACCESS_SHADER_WRITE_BIT)
-                                .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT)));
+                                .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT)))
+                                .apply(1, a->a
+                                        .sType$Default()
+                                        .image(blockView.image.image())
+                                        .oldLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                                        .newLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+                                        .srcAccessMask(0)
+                                        .dstAccessMask(VK_ACCESS_SHADER_READ_BIT)
+                                        .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT))));
             }
 
             raytracePipeline.bind(cmd);
@@ -271,7 +291,8 @@ public class VulkanPipeline {
             ctx.cmd.submit(0, new VCmdBuff[]{cmd}, new VSemaphore[]{tlasLink}, new int[]{VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR}, new VSemaphore[]{out}, fence);
 
 
-
+            var semCapture = previousSemaphore;
+            previousSemaphore = out;
             ctx.sync.addCallback(fence, ()->{
                 tlasLink.free();
                 in.free();
@@ -282,10 +303,9 @@ public class VulkanPipeline {
                 //TODO: figure out how to free the out semaphore
                 uboBuffer.free();
                 refBuffer.free();
-            });
-
-            Vulkanite.INSTANCE.addSyncedCallback(()->{
-                out.free();//Hack but this works since this is managed by the gl instance it will have finished being used before its freed
+                if (semCapture != null) {
+                    semCapture.free();
+                }
             });
         }
 

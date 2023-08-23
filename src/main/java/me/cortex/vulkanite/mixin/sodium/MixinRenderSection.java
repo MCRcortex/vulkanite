@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.mixin;
+package me.cortex.vulkanite.mixin.sodium;
 
 import me.cortex.vulkanite.client.Vulkanite;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;

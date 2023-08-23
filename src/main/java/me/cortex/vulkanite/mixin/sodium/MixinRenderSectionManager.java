@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.mixin;
+package me.cortex.vulkanite.mixin.sodium;
 
 import it.unimi.dsi.fastutil.longs.Long2ReferenceMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceLinkedOpenHashMap;

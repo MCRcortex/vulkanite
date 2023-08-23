@@ -136,7 +136,7 @@ public class VmaAllocator {
     public abstract class Allocation {
         public final VmaAllocationInfo ai;
         public final long allocation;
-        private boolean freed = false;
+        boolean freed = false;
         public Allocation(long allocation, VmaAllocationInfo info) {
             this.ai = info;
             this.allocation = allocation;

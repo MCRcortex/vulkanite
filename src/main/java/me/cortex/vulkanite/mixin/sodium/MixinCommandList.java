@@ -1,13 +1,13 @@
-package me.cortex.vulkanite.mixin;
+package me.cortex.vulkanite.mixin.sodium;
 
 import me.cortex.vulkanite.client.Vulkanite;
-import me.cortex.vulkanite.compat.IVCG;
+import me.cortex.vulkanite.compat.IVulkanContextGetter;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.jellysquid.mods.sodium.client.gl.device.CommandList;
 import org.spongepowered.asm.mixin.Mixin;
 
 @Mixin(value = CommandList.class, remap = false)
-public interface MixinCommandList extends IVCG {
+public interface MixinCommandList extends IVulkanContextGetter {
     default VContext getCtx() {
         return Vulkanite.INSTANCE.getCtx();
     }

@@ -1,7 +1,11 @@
 package me.cortex.vulkanite.lib.memory;
 
+import java.lang.ref.Cleaner;
+
 public class VImage {
-    private final VmaAllocator.ImageAllocation allocation;
+    private static final Cleaner cc = Cleaner.create();
+
+    private VmaAllocator.ImageAllocation allocation;
     public final int width;
     public final int height;
     public final int mipLayers;
@@ -13,10 +17,16 @@ public class VImage {
         this.height = height;
         this.mipLayers = mipLayers;
         this.format = format;
+        cc.register(this, ()->{
+            if (!allocation.freed) {
+                System.err.println("Image memory leak");
+            }
+        });
     }
 
     public void free() {
         allocation.free();
+        allocation = null;
     }
 
     public long image() {

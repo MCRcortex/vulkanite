@@ -105,7 +105,7 @@ public class Test {
 
         var context = init.createContext();
 
-        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
+        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
         context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
         context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
@@ -120,6 +120,7 @@ public class Test {
         mem.map();
         mem.unmap();
         mem.flush();
+        System.gc();
 
         SharedQuadVkIndexBuffer.getIndexBuffer(context, 10000);
 

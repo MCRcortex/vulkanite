@@ -5,7 +5,6 @@ import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
-import me.cortex.vulkanite.mixin.MixinRenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import org.lwjgl.vulkan.VkPhysicalDeviceAccelerationStructureFeaturesKHR;
@@ -71,6 +70,9 @@ public class Vulkanite {
     public void renderTick() {
         ctx.sync.checkFences();
         accelerationManager.updateTick();
+    }
+
+    public void fenceTick() {
         fencedCallback.tick();
     }
 
@@ -138,5 +140,4 @@ public class Vulkanite {
 
         return init.createContext();
     }
-
 }

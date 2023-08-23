@@ -253,13 +253,11 @@ public class AccelerationBlasBuilder {
                         for (var gb : geometryBuffers) {
                             gb.free();
                         }
-                        //TODO: need to free the cmd buffer and fence AND THE SEMAPHORE
+
                         sinlgeUsePool.releaseNow(cmd);
 
                         //We can destroy the fence here since we know its passed
                         buildFence.free();
-
-                        //TODO: maybe make it automatic in submit
                     }
                 }
 
@@ -280,7 +278,7 @@ public class AccelerationBlasBuilder {
                     //Dont need a memory barrier cause submit ensures cache flushing already
 
                     for (int idx = 0; idx < compactedSizes.length; idx++) {
-                        var as = context.memory.createAcceleration(compactedSizes[idx], 256,//TODO: dont hardcode alignment
+                        var as = context.memory.createAcceleration(compactedSizes[idx], 256,
                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
                         vkCmdCopyAccelerationStructureKHR(cmd.buffer, VkCopyAccelerationStructureInfoKHR.calloc(stack).sType$Default()

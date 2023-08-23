@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.mixin;
+package me.cortex.vulkanite.mixin.sodium;
 
 import me.cortex.vulkanite.compat.IVkBuffer;
 import me.cortex.vulkanite.lib.memory.VGBuffer;
