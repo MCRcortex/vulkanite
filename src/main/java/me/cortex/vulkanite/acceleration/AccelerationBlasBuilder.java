@@ -54,7 +54,7 @@ public class AccelerationBlasBuilder {
     private final ConcurrentLinkedDeque<List<BLASBuildJob>> batchedJobs = new ConcurrentLinkedDeque<>();
 
     public AccelerationBlasBuilder(VContext context, int asyncQueue, Consumer<BLASBatchResult> resultConsumer) {
-        this.sinlgeUsePool = new VCommandPool(context.device, VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+        this.sinlgeUsePool = context.cmd.createSingleUsePool();
         this.queryPool = new VQueryPool(context.device, 10000, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR);
         this.context = context;
         this.asyncQueue = asyncQueue;

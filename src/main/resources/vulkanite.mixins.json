@@ -17,7 +17,8 @@
     "sodium.MixinMutableBuffer",
     "sodium.MixinRenderSection",
     "sodium.MixinRenderSectionManager",
-    "sodium.VertexFormatAccessor"
+    "sodium.VertexFormatAccessor",
+    "sodium.MixinRenderRegionManager"
   ],
   "injectors": {
     "defaultRequire": 1
