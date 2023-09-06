@@ -35,14 +35,14 @@ import static org.lwjgl.vulkan.KHRShaderDrawParameters.VK_KHR_SHADER_DRAW_PARAME
 import static org.lwjgl.vulkan.KHRSpirv14.VK_KHR_SPIRV_1_4_EXTENSION_NAME;
 
 public class Vulkanite {
+    public static boolean MEMORY_LEAK_TRACING = true;
     public static boolean IS_ENABLED = true;
     public static final Vulkanite INSTANCE = new Vulkanite();
 
     private final VContext ctx;
     private final ArbitarySyncPointCallback fencedCallback = new ArbitarySyncPointCallback();
 
-    private AccelerationManager accelerationManager;
-    public VulkanPipeline pipeline;
+    private final AccelerationManager accelerationManager;
 
     public Vulkanite() {
         ctx = createVulkanContext();
@@ -51,7 +51,6 @@ public class Vulkanite {
         SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 30000);
 
         accelerationManager = new AccelerationManager(ctx, 1);
-        pipeline = new VulkanPipeline(ctx, accelerationManager);
     }
 
     public void upload(List<ChunkBuildOutput> results) {
@@ -60,6 +59,7 @@ public class Vulkanite {
             return;//TODO: delete the chunk section in this case then or something
         accelerationManager.chunkBuild(result);
          */
+
         accelerationManager.chunkBuilds(results);
     }
 
@@ -82,6 +82,10 @@ public class Vulkanite {
 
     public void addSyncedCallback(Runnable callback) {
         fencedCallback.enqueue(callback);
+    }
+
+    public void destroy() {
+        accelerationManager.cleanup();
     }
 
     private static VContext createVulkanContext() {
@@ -140,4 +144,9 @@ public class Vulkanite {
 
         return init.createContext();
     }
+
+    public AccelerationManager getAccelerationManager() {
+        return accelerationManager;
+    }
+
 }

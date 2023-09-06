@@ -25,6 +25,7 @@ public class CommandManager {
             var pQ = stack.pointers(0);
             for (int i = 0; i < queues; i++) {
                 vkGetDeviceQueue(device, 0, i, pQ);
+                System.out.println("Queue "+i+" has address " + Long.toHexString(pQ.get(0)));
                 this.queues[i] = new VkQueue(pQ.get(0), device);
             }
         }
@@ -65,5 +66,9 @@ public class CommandManager {
                     .pSignalSemaphores(signalSemaphores);
             vkQueueSubmit(queues[queueId], submit, fence==null?0:fence.address());
         }
+    }
+
+    public void waitQueueIdle(int queue) {
+        vkQueueWaitIdle(queues[queue]);
     }
 }

@@ -11,6 +11,8 @@ import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
+import net.minecraft.util.math.ChunkSectionPos;
+import net.minecraft.world.chunk.ChunkSection;
 import org.joml.Matrix4x3f;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
@@ -64,7 +66,11 @@ public class AccelerationTLASManager {
 
         if (buildDataManager.sectionCount() == 0) {
             if (blocking.length != 0) {
-                throw new IllegalStateException();
+                //This case can happen when reloading or some other weird cases, only occurse when the world _becomes_ empty for some reason, so just clear all the semaphores
+                //TODO: move to a destroy method or something in AccelerationManager instead of here
+                for (var semaphore : blocking) {
+                    semaphore.free();
+                }
             }
             return;
         }
@@ -310,12 +316,10 @@ public class AccelerationTLASManager {
             }
         }
 
-        Map<RenderSection, Holder> tmp = new HashMap<>();
+        Map<ChunkSectionPos, Holder> tmp = new HashMap<>();
 
         public void update(AccelerationBlasBuilder.BLASBuildResult result) {
-            var holder = tmp.computeIfAbsent(result.section(), a -> {
-               return new Holder(alloc(), a);
-            });
+            var holder = tmp.computeIfAbsent(result.section().getPosition(), a -> new Holder(alloc(), result.section()));
             if (holder.structure != null) {
                 structuresToRelease.add(holder.structure);
             }
@@ -335,13 +339,24 @@ public class AccelerationTLASManager {
         }
 
         public void remove(RenderSection section) {
-            var holder = tmp.remove(section);
+            var holder = tmp.remove(section.getPosition());
             if (holder == null)
                 return;
 
             structuresToRelease.add(holder.structure);
 
             free(holder.id);
+        }
+    }
+
+    //Called for cleaning up any remaining loose resources
+    void cleanupTick() {
+        singleUsePool.doReleases();
+        structuresToRelease.forEach(VAccelerationStructure::free);
+        structuresToRelease.clear();
+        if (currentTLAS != null) {
+            currentTLAS.free();
+            currentTLAS = null;
         }
     }
 }

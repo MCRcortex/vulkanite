@@ -53,4 +53,13 @@ public class AccelerationManager {
     public void sectionRemove(RenderSection section) {
         tlasManager.removeSection(section);
     }
+
+    //Cleans up any loose things such as semaphores waiting to be synced etc
+    public void cleanup() {
+        ctx.cmd.waitQueueIdle(0);
+        ctx.cmd.waitQueueIdle(1);
+        syncs.forEach(VSemaphore::free);
+        syncs.clear();
+        tlasManager.cleanupTick();
+    }
 }

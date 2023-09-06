@@ -27,6 +27,7 @@ public abstract class MixinRenderSectionManager {
         for (var section : sectionByPosition.values()) {
             Vulkanite.INSTANCE.sectionRemove(section);
         }
+        Vulkanite.INSTANCE.destroy();
     }
 
     @Redirect(method = "destroy", at = @At(value = "INVOKE", target = "Lme/jellysquid/mods/sodium/client/render/chunk/compile/ChunkBuildOutput;delete()V"))
@@ -36,7 +37,6 @@ public abstract class MixinRenderSectionManager {
             data.values().forEach(entry->entry.data().free());
         }
         instance.delete();
-
         //TODO: need to ingest and cleanup all the blas builds and tlas updates
     }
 
@@ -44,6 +44,8 @@ public abstract class MixinRenderSectionManager {
     private void processResults(ArrayList<ChunkBuildOutput> results, CallbackInfo ci) {
         Reference2ReferenceLinkedOpenHashMap<RenderSection, ChunkBuildOutput> map = new Reference2ReferenceLinkedOpenHashMap<>();
         for(ChunkBuildOutput output : results) {
+            if (((IAccelerationBuildResult)output).getAccelerationGeometryData() == null)
+                continue;
             if (!output.render.isDisposed() && output.render.getLastBuiltFrame() <= output.buildTime) {
                 RenderSection render = output.render;
                 ChunkBuildOutput previous = map.get(render);
@@ -51,22 +53,21 @@ public abstract class MixinRenderSectionManager {
                     var prev = map.put(render, output);
                     if (prev != null) {
                         var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
-                        if (data != null)
-                            data.values().forEach(a->a.data().free());
+                        data.values().forEach(a->a.data().free());
                     }
                 } else {
                     //Else need to free the injected result
                     var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
-                    if (data != null)
-                        data.values().forEach(a->a.data().free());
+                    data.values().forEach(a->a.data().free());
                 }
             } else {
                 //Else need to free the injected result
                 var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
-                if (data != null)
-                    data.values().forEach(a->a.data().free());
+                data.values().forEach(a->a.data().free());
             }
         }
-        Vulkanite.INSTANCE.upload(new ArrayList<>(map.values()));
+        if (!map.values().isEmpty()) {
+            Vulkanite.INSTANCE.upload(new ArrayList<>(map.values()));
+        }
     }
 }

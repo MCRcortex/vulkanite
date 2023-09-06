@@ -17,13 +17,15 @@ import static org.lwjgl.vulkan.VK10.vkFlushMappedMemoryRanges;
 public class VBuffer {
     private static final Cleaner cc = Cleaner.create();
 
-
     private VmaAllocator.BufferAllocation allocation;
     VBuffer(VmaAllocator.BufferAllocation allocation) {
         this.allocation = allocation;
+        //TODO: make this optional (memory location tracing)
+        Throwable trace = new Throwable();
         cc.register(this, ()->{
             if (!allocation.freed) {
-                System.err.println("Buffer memory leak");
+                System.err.println("Buffer memory leak at");
+                trace.printStackTrace();
             }
         });
     }

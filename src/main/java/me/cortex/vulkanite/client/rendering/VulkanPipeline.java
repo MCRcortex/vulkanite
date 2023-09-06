@@ -59,6 +59,7 @@ public class VulkanPipeline {
     private final long sampler;
 
     private int fidx;
+
     public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager) {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
@@ -314,6 +315,10 @@ public class VulkanPipeline {
 
         fidx++;
         fidx %= 10;
+
+    }
+
+    public void destory() {
 
     }
 }

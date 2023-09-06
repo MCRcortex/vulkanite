@@ -96,4 +96,7 @@ public class VShader {
         }
     }
 
+    public void delete() {
+        vkDestroyShaderModule(ctx.device, module, null);
+    }
 }
