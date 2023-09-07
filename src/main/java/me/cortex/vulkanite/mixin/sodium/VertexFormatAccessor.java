@@ -5,7 +5,7 @@ import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkVertexTy
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
 
-@Mixin(ChunkBuildBuffers.class)
+@Mixin(value = ChunkBuildBuffers.class, remap = false)
 public interface VertexFormatAccessor {
     @Accessor
     ChunkVertexType getVertexType();

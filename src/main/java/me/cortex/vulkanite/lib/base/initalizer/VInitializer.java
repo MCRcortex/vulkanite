@@ -8,7 +8,9 @@ import org.lwjgl.system.Struct;
 import org.lwjgl.vulkan.*;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -59,7 +61,15 @@ public class VInitializer {
 
     //TODO: add nice queue creation system
     public void createDevice(List<String> extensions, List<String> layers, float[] queuePriorities, Consumer<VkPhysicalDeviceFeatures> deviceFeatures, List<Function<MemoryStack, Struct>> applicators) {
+        var deviceExtensions = new HashSet<>(getDeviceExtensionStrings(physicalDevice));
+        for (var extension : extensions) {
+            if (!deviceExtensions.contains(extension)) {
+                throw new IllegalStateException("Physical device is missing extension: " + extension);
+            }
+        }
+
         try (MemoryStack stack = stackPush()) {
+
             queueCount = queuePriorities.length;
             var queueCreateInfos = VkDeviceQueueCreateInfo.calloc(1, stack)
                     .sType$Default()
@@ -121,6 +131,17 @@ public class VInitializer {
         if (res[0] != devices.capacity())
             throw new IllegalStateException();
         return devices;
+    }
+
+    private List<String> getDeviceExtensionStrings(VkPhysicalDevice device) {
+        List<String> extensions = new ArrayList<>();
+        try (var stack = stackPush()) {
+            var eb = getDeviceExtensions(stack, device);
+            for (var extension : eb) {
+                extensions.add(extension.extensionNameString());
+            }
+        }
+        return extensions;
     }
 
     private VkExtensionProperties.Buffer getDeviceExtensions(MemoryStack stack, long device) {
