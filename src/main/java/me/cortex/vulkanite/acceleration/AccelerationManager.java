@@ -56,6 +56,14 @@ public class AccelerationManager {
 
     //Cleans up any loose things such as semaphores waiting to be synced etc
     public void cleanup() {
+        //TODO: FIXME: I DONT THINK THIS IS CORRECT OR WORKS, IM STILL LEAKING VRAM MEMORY OUT THE WAZOO WHEN f3+a reloading
+        ctx.cmd.waitQueueIdle(0);
+        ctx.cmd.waitQueueIdle(1);
+        try {
+            Thread.sleep(250L);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         ctx.cmd.waitQueueIdle(0);
         ctx.cmd.waitQueueIdle(1);
         syncs.forEach(VSemaphore::free);

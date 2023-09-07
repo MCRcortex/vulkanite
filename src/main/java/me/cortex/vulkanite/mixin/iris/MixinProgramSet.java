@@ -28,13 +28,13 @@ public abstract class MixinProgramSet implements IGetRaytracingSource {
         int passId = 0;
         while (true) {
             int pass = passId++;
-            var gen = sourceProvider.apply(directory.resolve("raygen_"+pass+".glsl"));
+            var gen = sourceProvider.apply(directory.resolve("ray"+pass+".rgen"));
             if (gen == null)
                 break;
             List<String> missSources = new ArrayList<>();
             int missId = 0;
             while (true) {
-                var miss = sourceProvider.apply(directory.resolve("raymiss_"+pass+"_"+(missId++)+".glsl"));
+                var miss = sourceProvider.apply(directory.resolve("ray"+pass+"_"+(missId++)+".rmiss"));
                 if (miss == null)
                     break;
                 missSources.add(miss);
@@ -43,9 +43,9 @@ public abstract class MixinProgramSet implements IGetRaytracingSource {
             int hitId = 0;
             while (true) {
                 int hit = hitId++;
-                var close = sourceProvider.apply(directory.resolve("rayclose_"+pass+"_"+hit+".glsl"));
-                var any = sourceProvider.apply(directory.resolve("rayany_"+pass+"_"+hit+".glsl"));
-                var intersect = sourceProvider.apply(directory.resolve("rayintersect_"+pass+"_"+hit+".glsl"));
+                var close = sourceProvider.apply(directory.resolve("ray"+pass+"_"+hit+".rchit"));
+                var any = sourceProvider.apply(directory.resolve("ray"+pass+"_"+hit+".rahit"));
+                var intersect = sourceProvider.apply(directory.resolve("ray"+pass+"_"+hit+".rint"));
                 if (close == null && any == null && intersect == null)
                     break;
                 hitSources.add(new RaytracingShaderSource.RayHitSource(close, any, intersect));

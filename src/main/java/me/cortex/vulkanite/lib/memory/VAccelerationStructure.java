@@ -4,6 +4,8 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkAccelerationStructureDeviceAddressInfoKHR;
 import org.lwjgl.vulkan.VkDevice;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 

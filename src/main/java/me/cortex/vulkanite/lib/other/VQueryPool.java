@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.other;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -12,7 +13,7 @@ import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VQueryPool {
+public class VQueryPool extends TrackedResourceObject {
     public final long pool;
     private final VkDevice device;
     public VQueryPool(VkDevice device, int count, int type) {
@@ -53,6 +54,7 @@ public class VQueryPool {
     }
 
     public void free() {
+        free0();
         vkDestroyQueryPool(device, pool, null);
     }
 }

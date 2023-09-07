@@ -358,5 +358,8 @@ public class AccelerationTLASManager {
             currentTLAS.free();
             currentTLAS = null;
         }
+        if (buildDataManager.sectionCount() != 0) {
+            throw new IllegalStateException("Sections are not empty on cleanup");
+        }
     }
 }

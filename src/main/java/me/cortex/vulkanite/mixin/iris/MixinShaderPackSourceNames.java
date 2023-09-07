@@ -14,12 +14,12 @@ public class MixinShaderPackSourceNames {
         ImmutableList.Builder<String> builder = ImmutableList.builder();
         builder.addAll(cir.getReturnValue());
         for (int i = 0; i < 3; i++) {
-            builder.add("raygen_"+i+".glsl");
+            builder.add("ray"+i+".rgen");
             for (int j = 0; j < 4; j++) {
-                builder.add("raymiss_"+i+"_"+j+".glsl");
-                builder.add("rayclose_"+i+"_"+j+".glsl");
-                builder.add("rayany_"+i+"_"+j+".glsl");
-                builder.add("rayintersect_"+i+"_"+j+".glsl");
+                builder.add("ray"+i+"_"+j+".rmiss");
+                builder.add("ray"+i+"_"+j+".rchit");
+                builder.add("ray"+i+"_"+j+".rahit");
+                builder.add("ray"+i+"_"+j+".rint");
             }
         }
         cir.setReturnValue(builder.build());

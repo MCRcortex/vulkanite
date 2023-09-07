@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.pipeline;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VkShaderModuleCreateInfo;
@@ -13,7 +14,7 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VShader {
+public class VShader extends TrackedResourceObject {
     private final VContext ctx;
     public final long module;
     public final int stage;
@@ -98,5 +99,10 @@ public class VShader {
 
     public void delete() {
         vkDestroyShaderModule(ctx.device, module, null);
+    }
+
+    @Override
+    public void free() {
+
     }
 }

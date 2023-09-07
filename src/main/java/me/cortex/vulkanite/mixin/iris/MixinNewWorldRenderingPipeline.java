@@ -36,7 +36,7 @@ public class MixinNewWorldRenderingPipeline {
             for (int i = 0; i < passes.length; i++) {
                 rtShaderPasses[i] = new RaytracingShaderSet(ctx, passes[i]);
             }
-            pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager());
+            pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses);
         }
     }
 

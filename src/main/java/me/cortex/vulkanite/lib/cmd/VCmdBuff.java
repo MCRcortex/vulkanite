@@ -11,7 +11,8 @@ import static org.lwjgl.vulkan.VK10.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 public class VCmdBuff implements Pointer {
     private final VCommandPool pool;
     public final VkCommandBuffer buffer;
-    public VCmdBuff(VCommandPool pool, VkCommandBuffer buff) {
+
+    VCmdBuff(VCommandPool pool, VkCommandBuffer buff) {
         this.pool = pool;
         this.buffer = buff;
     }

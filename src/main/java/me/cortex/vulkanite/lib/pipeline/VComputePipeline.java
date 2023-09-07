@@ -1,9 +1,10 @@
 package me.cortex.vulkanite.lib.pipeline;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 
-public class VComputePipeline {
+public class VComputePipeline extends TrackedResourceObject {
     private final VContext context;
     private final long pipeline;
     private final long layout;
@@ -14,7 +15,8 @@ public class VComputePipeline {
         this.pipeline = pipeline;
     }
 
-    public void free(VFence fence) {
-        //Frees with respect to a fence
+    @Override
+    public void free() {
+
     }
 }

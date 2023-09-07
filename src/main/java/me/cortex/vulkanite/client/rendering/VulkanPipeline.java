@@ -3,6 +3,7 @@ package me.cortex.vulkanite.client.rendering;
 import me.cortex.vulkanite.acceleration.AccelerationManager;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVGImage;
+import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
@@ -38,6 +39,7 @@ import static net.coderbot.iris.uniforms.CelestialUniforms.getSunAngle;
 import static net.coderbot.iris.uniforms.CelestialUniforms.isDay;
 import static org.lwjgl.opengl.EXTSemaphore.GL_LAYOUT_GENERAL_EXT;
 import static org.lwjgl.opengl.EXTSemaphore.glSignalSemaphoreEXT;
+import static org.lwjgl.opengl.GL11C.glFinish;
 import static org.lwjgl.opengl.GL11C.glFlush;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
@@ -52,7 +54,7 @@ public class VulkanPipeline {
     private final AccelerationManager accelerationManager;
     private final VCommandPool singleUsePool;
 
-    private VRaytracePipeline raytracePipeline;
+    private VRaytracePipeline[] raytracePipelines;
     private VDescriptorSetLayout layout;
     private VDescriptorPool descriptors;
 
@@ -60,7 +62,7 @@ public class VulkanPipeline {
 
     private int fidx;
 
-    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager) {
+    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes) {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
         this.singleUsePool = ctx.cmd.createSingleUsePool();
@@ -98,17 +100,12 @@ public class VulkanPipeline {
             descriptors = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, layout.types());
             descriptors.allocateSets(layout);
 
-            var rgs = VShader.compileLoad(ctx, Files.readString(new File("raygen.glsl").toPath()), VK_SHADER_STAGE_RAYGEN_BIT_KHR);
-            var rms = VShader.compileLoad(ctx, Files.readString(new File("raymiss.glsl").toPath()), VK_SHADER_STAGE_MISS_BIT_KHR);
-            var rchs = VShader.compileLoad(ctx, Files.readString(new File("raychit.glsl").toPath()), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-            var rahs = VShader.compileLoad(ctx, Files.readString(new File("rayahit.glsl").toPath()), VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
-
-            raytracePipeline = new RaytracePipelineBuilder()
-                    .addLayout(layout)
-                    .setRayGen(rgs.named())
-                    .addMiss(rms.named())
-                    .addHit(rchs.named(), rahs.named(), null)
-                    .build(ctx, 1);
+            raytracePipelines = new VRaytracePipeline[passes.length];
+            for (int i = 0; i < passes.length; i++) {
+                var builder = new RaytracePipelineBuilder().addLayout(layout);
+                passes[i].apply(builder);
+                raytracePipelines[i] = builder.build(ctx, 1);
+            }
 
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -143,6 +140,9 @@ public class VulkanPipeline {
 
         var tlas = accelerationManager.buildTLAS(in, tlasLink);
         if (tlas == null) {
+            glFinish();
+            tlasLink.free();
+            in.free();
             return;
         }
 
@@ -283,9 +283,11 @@ public class VulkanPipeline {
                                         .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT))));
             }
 
-            raytracePipeline.bind(cmd);
-            raytracePipeline.bindDSet(cmd, desc);
-            raytracePipeline.trace(cmd,outImg.width,outImg.height,1);
+            for (var pipeline : raytracePipelines) {
+                pipeline.bind(cmd);
+                pipeline.bindDSet(cmd, desc);
+                pipeline.trace(cmd, outImg.width, outImg.height, 1);
+            }
 
             cmd.end();
             var fence = ctx.sync.createFence();

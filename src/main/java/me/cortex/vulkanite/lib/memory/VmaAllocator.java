@@ -1,11 +1,13 @@
 package me.cortex.vulkanite.lib.memory;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.Struct;
 import org.lwjgl.util.vma.*;
 import org.lwjgl.vulkan.*;
 
+import java.lang.ref.Cleaner;
 import java.nio.LongBuffer;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -133,16 +135,18 @@ public class VmaAllocator {
     }
 
 
-    public abstract class Allocation {
+    public abstract static class Allocation extends TrackedResourceObject {
         public final VmaAllocationInfo ai;
         public final long allocation;
-        boolean freed = false;
+
         public Allocation(long allocation, VmaAllocationInfo info) {
+
             this.ai = info;
             this.allocation = allocation;
         }
+
         public void free() {
-            freed = true;
+            free0();
             //vmaFreeMemory(allocator, allocation);
             ai.free();
         }
@@ -172,10 +176,10 @@ public class VmaAllocator {
             ALLOCATOR_LOCK.lock();
             try {
                 vmaDestroyBuffer(allocator, buffer, allocation);
+                super.free();
             } finally {
                 ALLOCATOR_LOCK.unlock();
             }
-            super.free();
         }
 
         public VkDevice getDevice() {
@@ -238,10 +242,10 @@ public class VmaAllocator {
             ALLOCATOR_LOCK.lock();
             try {
                 vmaDestroyImage(allocator, image, allocation);
+                super.free();
             } finally {
                 ALLOCATOR_LOCK.unlock();
             }
-            super.free();
         }
     }
 

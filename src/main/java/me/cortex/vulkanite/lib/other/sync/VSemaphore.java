@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.other.sync;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import org.lwjgl.system.Pointer;
 import org.lwjgl.vulkan.VkDevice;
 
@@ -7,7 +8,7 @@ import java.util.Objects;
 
 import static org.lwjgl.vulkan.VK10.vkDestroySemaphore;
 
-public class VSemaphore implements Pointer {
+public class VSemaphore extends TrackedResourceObject implements Pointer {
     private final VkDevice device;
     private final long semaphore;
 
@@ -22,6 +23,7 @@ public class VSemaphore implements Pointer {
     }
 
     public void free() {
+        free0();
         vkDestroySemaphore(device, semaphore, null);
     }
 

@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.pipeline;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VBuffer;
@@ -11,7 +12,7 @@ import static org.lwjgl.vulkan.KHRRayTracingPipeline.vkCmdTraceRaysKHR;
 import static org.lwjgl.vulkan.VK10.vkCmdBindDescriptorSets;
 import static org.lwjgl.vulkan.VK10.vkCmdBindPipeline;
 
-public class VRaytracePipeline {
+public class VRaytracePipeline extends TrackedResourceObject {
     private final VContext context;
     private final long pipeline;
     private final long layout;
@@ -47,7 +48,7 @@ public class VRaytracePipeline {
         vkCmdBindDescriptorSets(cmd.buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, layout, 0, descs, null);
     }
 
-    public void free(VFence fence) {
+    public void free() {
 
     }
 }

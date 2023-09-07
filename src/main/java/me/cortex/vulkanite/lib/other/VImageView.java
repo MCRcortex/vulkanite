@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.other;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.memory.VImage;
 import org.lwjgl.vulkan.VkImageViewCreateInfo;
@@ -10,7 +11,7 @@ import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VImageView {
+public class VImageView extends TrackedResourceObject {
     private final VContext ctx;
     public final VImage image;
     public final long view;
@@ -35,6 +36,7 @@ public class VImageView {
     }
 
     public void free() {
+        free0();
         vkDestroyImage(ctx.device, view, null);
     }
 }
