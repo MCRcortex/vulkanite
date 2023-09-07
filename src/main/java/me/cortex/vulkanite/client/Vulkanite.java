@@ -115,7 +115,7 @@ public class Vulkanite {
                         VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
                         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
 
-                        VK_KHR_RAY_QUERY_EXTENSION_NAME,
+                        //VK_KHR_RAY_QUERY_EXTENSION_NAME,
 
                         VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
                         VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,

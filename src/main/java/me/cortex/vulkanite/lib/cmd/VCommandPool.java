@@ -69,13 +69,12 @@ public class VCommandPool extends TrackedResourceObject {
 
     public void doReleases() {
         while (!toRelease.isEmpty()) {
-            vkFreeCommandBuffers(device, pool, toRelease.poll().buffer);
+            toRelease.poll().freeInternal();
         }
     }
 
     public void releaseNow(VCmdBuff cmd) {
-        //NOTE: the reason this is done here and not in VCmdBuff is so that it is not accidently done in VCmdBuff
-        vkFreeCommandBuffers(device, pool, cmd.buffer);
+        cmd.freeInternal();
     }
 
     @Override
