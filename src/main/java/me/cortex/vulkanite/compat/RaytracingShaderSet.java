@@ -76,7 +76,7 @@ public class RaytracingShaderSet {
 
     public void delete() {
         for (var shader : allShader) {
-            shader.delete();
+            shader.free();
         }
     }
 }

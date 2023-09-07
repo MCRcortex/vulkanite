@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.descriptors;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import org.lwjgl.vulkan.VkDescriptorPoolCreateInfo;
 import org.lwjgl.vulkan.VkDescriptorPoolSize;
@@ -9,10 +10,9 @@ import java.nio.LongBuffer;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
-import static org.lwjgl.vulkan.VK10.vkAllocateDescriptorSets;
-import static org.lwjgl.vulkan.VK10.vkCreateDescriptorPool;
+import static org.lwjgl.vulkan.VK10.*;
 
-public class VDescriptorPool {
+public class VDescriptorPool extends TrackedResourceObject {
     private final VContext ctx;
     private final long pool;
 
@@ -42,7 +42,7 @@ public class VDescriptorPool {
         try (var stack = stackPush()) {
             var layouts = stack.mallocLong(sets.length);
             for (int i = 0; i < sets.length; i++) {
-                layouts.put(layout.layout());
+                layouts.put(layout.layout);
             }
             layouts.rewind();
             LongBuffer pDescriptorSets = stack.mallocLong(sets.length);
@@ -58,5 +58,11 @@ public class VDescriptorPool {
 
     public long get(int idx) {
         return sets[idx];
+    }
+
+    @Override
+    public void free() {
+        free0();
+        vkDestroyDescriptorPool(ctx.device, pool, null);
     }
 }

@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.cmd;
 
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -14,7 +15,7 @@ import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VCommandPool {
+public class VCommandPool extends TrackedResourceObject {
     final VkDevice device;
     final long pool;
     public VCommandPool(VkDevice device, int flags) {
@@ -72,12 +73,14 @@ public class VCommandPool {
         }
     }
 
-    public void destroy() {
-        throw new IllegalStateException("NOT IMPLEMENTED");
-    }
-
     public void releaseNow(VCmdBuff cmd) {
         //NOTE: the reason this is done here and not in VCmdBuff is so that it is not accidently done in VCmdBuff
         vkFreeCommandBuffers(device, pool, cmd.buffer);
+    }
+
+    @Override
+    public void free() {
+        free0();
+        vkDestroyCommandPool(device, pool, null);
     }
 }

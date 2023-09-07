@@ -37,7 +37,7 @@ public class ComputePipelineBuilder {
                     .sType$Default();
             {
                 //TODO: cleanup and add push constants
-                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(VDescriptorSetLayout::layout).toArray()));
+                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(a->a.layout).toArray()));
             }
 
             LongBuffer pLayout = stack.mallocLong(1);

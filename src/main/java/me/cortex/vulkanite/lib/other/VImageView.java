@@ -37,6 +37,6 @@ public class VImageView extends TrackedResourceObject {
 
     public void free() {
         free0();
-        vkDestroyImage(ctx.device, view, null);
+        vkDestroyImageView(ctx.device, view, null);
     }
 }

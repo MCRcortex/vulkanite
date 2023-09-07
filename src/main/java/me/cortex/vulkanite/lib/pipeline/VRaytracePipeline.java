@@ -7,10 +7,12 @@ import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import org.lwjgl.vulkan.VkStridedDeviceAddressRegionKHR;
 
+import java.util.List;
+import java.util.Set;
+
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.vkCmdTraceRaysKHR;
-import static org.lwjgl.vulkan.VK10.vkCmdBindDescriptorSets;
-import static org.lwjgl.vulkan.VK10.vkCmdBindPipeline;
+import static org.lwjgl.vulkan.VK10.*;
 
 public class VRaytracePipeline extends TrackedResourceObject {
     private final VContext context;
@@ -21,11 +23,15 @@ public class VRaytracePipeline extends TrackedResourceObject {
     private final VkStridedDeviceAddressRegionKHR miss;
     private final VkStridedDeviceAddressRegionKHR hit;
     private final VkStridedDeviceAddressRegionKHR callable;
+    private final Set<ShaderModule> shadersUsed;
+
     VRaytracePipeline(VContext context, long pipeline, long layout, VBuffer sbtMap,
                       VkStridedDeviceAddressRegionKHR raygen,
                       VkStridedDeviceAddressRegionKHR miss,
                       VkStridedDeviceAddressRegionKHR hit,
-                      VkStridedDeviceAddressRegionKHR callable) {
+                      VkStridedDeviceAddressRegionKHR callable,
+                      Set<ShaderModule> shadersUsed) {
+
         this.context = context;
         this.pipeline = pipeline;
         this.layout = layout;
@@ -34,6 +40,7 @@ public class VRaytracePipeline extends TrackedResourceObject {
         this.miss = miss;
         this.hit = hit;
         this.callable = callable;
+        this.shadersUsed = shadersUsed;
     }
 
     public void bind(VCmdBuff cmd) {
@@ -49,6 +56,8 @@ public class VRaytracePipeline extends TrackedResourceObject {
     }
 
     public void free() {
-
+        free0();
+        vkDestroyPipeline(context.device, pipeline, null);
+        stbMap.free();
     }
 }

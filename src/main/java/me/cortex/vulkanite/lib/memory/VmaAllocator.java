@@ -3,6 +3,7 @@ package me.cortex.vulkanite.lib.memory;
 import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.system.Struct;
 import org.lwjgl.util.vma.*;
 import org.lwjgl.vulkan.*;
@@ -271,6 +272,17 @@ public class VmaAllocator {
         }
         public ImageAllocation alloc(VkImageCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
             return VmaAllocator.this.alloc(pool, bufferCreateInfo, allocationCreateInfo);
+        }
+    }
+
+
+    public String dumpJson(boolean detailed) {
+        try (var stack = stackPush()) {
+            PointerBuffer pb = stack.callocPointer(1);
+            vmaBuildStatsString(allocator, pb, detailed);
+            String result = MemoryUtil.memUTF8(pb.get(0));
+            nvmaFreeStatsString(allocator, pb.get(0));
+            return result;
         }
     }
 }

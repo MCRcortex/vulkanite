@@ -117,7 +117,7 @@ public class RaytracePipelineBuilder {
 
             {
                 //TODO: cleanup and add push constants
-                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(VDescriptorSetLayout::layout).toArray()));
+                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(a->a.layout).toArray()));
             }
 
             LongBuffer pLayout = stack.mallocLong(1);
@@ -195,7 +195,8 @@ public class RaytracePipelineBuilder {
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + rgenBase, handleSizeAligned, handleSizeAligned),
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + missGroupBase, handleSizeAligned,handleSizeAligned * missGroupBase),
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + hitGroupsBase, handleSizeAligned,handleSizeAligned * hitGroupsBase),
-                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + callGroupBase, handleSizeAligned,handleSizeAligned * callGroupBase)
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + callGroupBase, handleSizeAligned,handleSizeAligned * callGroupBase),
+                        shaders
                 );
             }
         }

@@ -97,12 +97,9 @@ public class VShader extends TrackedResourceObject {
         }
     }
 
-    public void delete() {
-        vkDestroyShaderModule(ctx.device, module, null);
-    }
-
     @Override
     public void free() {
-
+        free0();
+        vkDestroyShaderModule(ctx.device, module, null);
     }
 }

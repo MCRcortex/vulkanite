@@ -8,6 +8,7 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK10.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
+//TODO: Track with TrackedResourceObject but need to be careful due to how the freeing works
 public class VCmdBuff implements Pointer {
     private final VCommandPool pool;
     public final VkCommandBuffer buffer;

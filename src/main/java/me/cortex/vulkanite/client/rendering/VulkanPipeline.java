@@ -13,6 +13,7 @@ import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.other.VImageView;
+import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
@@ -58,7 +59,7 @@ public class VulkanPipeline {
     private VDescriptorSetLayout layout;
     private VDescriptorPool descriptors;
 
-    private final long sampler;
+    private final VSampler sampler;
 
     private int fidx;
 
@@ -66,26 +67,16 @@ public class VulkanPipeline {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
         this.singleUsePool = ctx.cmd.createSingleUsePool();
-
-
-        try (MemoryStack stack = stackPush()) {
-            LongBuffer pSampler = stack.mallocLong(1);
-            _CHECK_(vkCreateSampler(ctx.device, VkSamplerCreateInfo
-                            .calloc(stack)
-                            .sType$Default()
-                            .magFilter(VK_FILTER_NEAREST)
-                            .minFilter(VK_FILTER_NEAREST)
-                            .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
-                            .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
-                            .addressModeV(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
-                            .addressModeW(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
-                            .compareOp(VK_COMPARE_OP_NEVER)
-                            .maxLod(1)
-                            .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
-                            .maxAnisotropy(1.0f), null, pSampler),
-                    "Failed to create sampler");
-            sampler = pSampler.get(0);
-        }
+        this.sampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_NEAREST)
+                .minFilter(VK_FILTER_NEAREST)
+                .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
+                .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                .addressModeV(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                .addressModeW(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                .compareOp(VK_COMPARE_OP_NEVER)
+                .maxLod(1)
+                .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
+                .maxAnisotropy(1.0f));
 
         try {
             layout = new DescriptorSetLayoutBuilder()
@@ -97,7 +88,7 @@ public class VulkanPipeline {
                     .build(ctx);
 
             //TODO: use frameahead count instead of just... 10
-            descriptors = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, layout.types());
+            descriptors = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, layout.types);
             descriptors.allocateSets(layout);
 
             raytracePipelines = new VRaytracePipeline[passes.length];
@@ -252,7 +243,7 @@ public class VulkanPipeline {
                             .pImageInfo(VkDescriptorImageInfo
                                     .calloc(1, stack)
                                     .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-                                    .sampler(sampler)
+                                    .sampler(sampler.sampler)
                                     .imageView(blockView.view));
                 }
 
@@ -321,6 +312,22 @@ public class VulkanPipeline {
     }
 
     public void destory() {
-
+        for (var pass : raytracePipelines) {
+            pass.free();
+        }
+        layout.free();
+        descriptors.free();
+        singleUsePool.doReleases();
+        singleUsePool.free();
+        if (previousSemaphore != null) {
+            previousSemaphore.free();
+        }
+        if (view != null) {
+            view.free();
+        }
+        if (blockView != null) {
+            blockView.free();
+        }
+        sampler.free();
     }
 }
