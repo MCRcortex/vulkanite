@@ -19,7 +19,7 @@ import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 public class MixinGlBufferArena {
 
     private VGBuffer createBuffer(VContext ctx, long size) {
-        return ctx.memory.createSharedBuffer(size,  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 16);
+        return ctx.memory.createSharedBuffer(size,  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
 
     @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lme/jellysquid/mods/sodium/client/gl/device/CommandList;allocateStorage(Lme/jellysquid/mods/sodium/client/gl/buffer/GlMutableBuffer;JLme/jellysquid/mods/sodium/client/gl/buffer/GlBufferUsage;)V"))

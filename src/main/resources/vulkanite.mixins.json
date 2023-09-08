@@ -17,13 +17,11 @@
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSection",
     "sodium.MixinRenderSectionManager",
-    "sodium.VertexFormatAccessor"
+    "sodium.VertexFormatAccessor",
+    "iris.MixinProgramSet",
+    "iris.MixinShaderPackSourceNames"
   ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "mixins": [
-    "iris.MixinProgramSet",
-    "iris.MixinShaderPackSourceNames"
-  ]
+  }
 }

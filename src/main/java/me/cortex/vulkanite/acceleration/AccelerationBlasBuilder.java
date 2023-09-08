@@ -39,8 +39,8 @@ import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 public class AccelerationBlasBuilder {
     private final VContext context;
     private record BLASTriangleData(int quadCount, NativeBuffer geometry, int geometryFlags) {}
-    private record BLASBuildJob(List<BLASTriangleData> geometries, RenderSection section, long time) {}
-    public record BLASBuildResult(VAccelerationStructure structure, RenderSection section, long time) {}
+    private record BLASBuildJob(List<BLASTriangleData> geometries, RenderSection section, long time, long[] gpuVertexGeometryPointers) {}
+    public record BLASBuildResult(VAccelerationStructure structure, RenderSection section, long time, long[] gpuVertexGeometryPointers) {}
     public record BLASBatchResult(List<BLASBuildResult> results, VSemaphore semaphore) { }
     private final Thread worker;
     private final int asyncQueue;
@@ -289,7 +289,7 @@ public class AccelerationBlasBuilder {
 
                         compactedAS[idx] = as;
                         var job = jobs.get(idx);
-                        results.add(new BLASBuildResult(as, job.section, job.time));
+                        results.add(new BLASBuildResult(as, job.section, job.time, job.gpuVertexGeometryPointers));
                     }
 
                     vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, null, null, null);
@@ -344,7 +344,7 @@ public class AccelerationBlasBuilder {
                 int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID?VK_GEOMETRY_OPAQUE_BIT_KHR:0;
                 buildData.add(new BLASTriangleData(entry.getValue().quadCount(), entry.getValue().data(), flag));
             }
-            jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime));
+            jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime, new long[3]));
         }
 
         if (jobs.isEmpty()) {

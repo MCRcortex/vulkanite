@@ -110,8 +110,8 @@ public class VulkanPipeline {
 
     private VSemaphore previousSemaphore;
     public void renderPostShadows(VGImage outImg, Camera camera) {
-
         this.singleUsePool.doReleases();
+
         if (view == null || outImg != view.image) {
             //TODO: free the old image with a fence or something kasjdhglkasjdg
             view = new VImageView(ctx, outImg);
@@ -123,7 +123,6 @@ public class VulkanPipeline {
             blockView = new VImageView(ctx, blockImage);
         }
 
-        //TODO:FIXME: this creates a memory leak every time this is run
         var in = ctx.sync.createSharedBinarySemaphore();
         in.glSignal(new int[0], new int[]{outImg.glId}, new int[]{GL_LAYOUT_GENERAL_EXT});
         glFlush();
@@ -181,7 +180,6 @@ public class VulkanPipeline {
             }
             uboBuffer.unmap();
             uboBuffer.flush();
-
 
             refBuffer = ctx.memory.createBuffer(1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,16);
 

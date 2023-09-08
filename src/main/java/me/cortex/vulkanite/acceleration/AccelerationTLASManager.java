@@ -304,9 +304,14 @@ public class AccelerationTLASManager {
     }
 
     private final class TLASSectionManager extends TLASGeometryManager {
+        private final TlasPointerArena arena = new TlasPointerArena(30000);
+
         //TODO: mixinto RenderSection and add a reference to a holder for us, its much faster than a hashmap
         private static final class Holder {
             final int id;
+            int geometryIndex = -1;
+            int geometryCount = -1;
+
             final RenderSection section;
             VAccelerationStructure structure;
 
@@ -324,6 +329,11 @@ public class AccelerationTLASManager {
                 structuresToRelease.add(holder.structure);
             }
             holder.structure = result.structure();
+
+            if (holder.geometryIndex != -1) {
+                holder.geometryCount = result.gpuVertexGeometryPointers().length;
+                holder.geometryIndex = arena.allocate(holder.geometryCount);
+            }
 
             try (var stack = stackPush()) {
                 var asi = VkAccelerationStructureInstanceKHR.calloc(stack)
@@ -346,6 +356,46 @@ public class AccelerationTLASManager {
             structuresToRelease.add(holder.structure);
 
             free(holder.id);
+
+            if (holder.geometryIndex != -1) {
+                arena.free(holder.geometryIndex, holder.geometryCount);
+            }
+        }
+    }
+
+    private static final class TlasPointerArena {
+        private final BitSet vacant;
+        public int maxIndex = 0;
+        private TlasPointerArena(int size) {
+            size *= 3;
+            vacant = new BitSet(size);
+            vacant.set(0, size);
+        }
+
+        public int allocate(int count) {
+            int pos = vacant.nextSetBit(0);
+            outer:
+            while (pos != -1) {
+                for (int offset = 1; offset < count; offset++) {
+                    if (!vacant.get(offset + pos)) {
+                        pos = vacant.nextSetBit(offset + pos + 1);
+                        continue outer;
+                    }
+                }
+                break;
+            }
+            if (pos == -1) {
+                throw new IllegalStateException();
+            }
+            vacant.clear(pos, pos+count);
+            maxIndex = Math.max(maxIndex, pos + count);
+            return pos;
+        }
+
+        public void free(int pos, int count) {
+            vacant.set(pos, pos+count);
+
+            maxIndex = vacant.previousClearBit(maxIndex) + 1;
         }
     }
 
