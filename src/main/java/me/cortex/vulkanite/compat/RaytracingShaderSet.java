@@ -13,6 +13,8 @@ import java.util.List;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 
 public class RaytracingShaderSet {
+    public final int maxDepth = 1;
+
     private record RayHit(ShaderModule close, ShaderModule any, ShaderModule intersection) {}
     private final ShaderModule raygen;
     private final ShaderModule[] raymiss;

@@ -8,6 +8,7 @@ import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
 import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
+import me.cortex.vulkanite.lib.descriptors.DescriptorUpdateBuilder;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorPool;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
@@ -186,69 +187,15 @@ public class VulkanPipeline {
 
             long desc = descriptors.get(fidx);
 
-            try (var stack = stackPush()) {
-                VkWriteDescriptorSet.Buffer writeUpdates = VkWriteDescriptorSet
-                        .calloc(5, stack);
-                {
-                    writeUpdates.get(0)
-                            .sType$Default()
-                            .dstBinding(0)
-                            .dstSet(desc)
-                            .descriptorType(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-                            .descriptorCount(1)
-                            .pBufferInfo(VkDescriptorBufferInfo
-                                    .calloc(1, stack)
-                                    .buffer(uboBuffer.buffer())
-                                    .offset(0)//TODO: MAKE THIS ALL BE ALIGNED bullshit thing
-                                    .range(VK_WHOLE_SIZE));
+            new DescriptorUpdateBuilder(ctx, 5)
+                    .set(desc)
+                    .uniform(0, uboBuffer)
+                    .acceleration(1, tlas)
+                    .buffer(2, refBuffer)
+                    .imageStore(3, view)
+                    .imageSampler(4, blockView, sampler)
+                    .apply();
 
-                    writeUpdates.get(1)
-                            .sType$Default()
-                            .dstBinding(1)
-                            .dstSet(desc)
-                            .descriptorType(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR)
-                            .descriptorCount(1)
-                            .pNext(VkWriteDescriptorSetAccelerationStructureKHR.calloc(stack)
-                                    .sType$Default()
-                                    .pAccelerationStructures(stack.longs(tlas.structure)));
-
-                    writeUpdates.get(2)
-                            .sType$Default()
-                            .dstBinding(2)
-                            .dstSet(desc)
-                            .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
-                            .descriptorCount(1)
-                            .pBufferInfo(VkDescriptorBufferInfo
-                                    .calloc(1, stack)
-                                    .buffer(refBuffer.buffer())
-                                    .range(VK_WHOLE_SIZE));
-
-                    writeUpdates.get(3)
-                            .sType$Default()
-                            .dstBinding(3)
-                            .dstSet(desc)
-                            .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
-                            .descriptorCount(1)
-                            .pImageInfo(VkDescriptorImageInfo
-                                    .calloc(1, stack)
-                                    .imageLayout(VK_IMAGE_LAYOUT_GENERAL)
-                                    .imageView(view.view));
-
-                    writeUpdates.get(4)
-                            .sType$Default()
-                            .dstBinding(4)
-                            .dstSet(desc)
-                            .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-                            .descriptorCount(1)
-                            .pImageInfo(VkDescriptorImageInfo
-                                    .calloc(1, stack)
-                                    .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-                                    .sampler(sampler.sampler)
-                                    .imageView(blockView.view));
-                }
-
-                vkUpdateDescriptorSets(ctx.device, writeUpdates, null);
-            }
 
             //TODO: dont use a single use pool for commands like this...
             var cmd = singleUsePool.createCommandBuffer();
