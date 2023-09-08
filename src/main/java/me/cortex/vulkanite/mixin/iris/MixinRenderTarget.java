@@ -82,6 +82,7 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
             case GL_RGBA16 -> VK_FORMAT_R16G16B16A16_SFLOAT;
             case GL_RGBA32F -> VK_FORMAT_R32G32B32A32_SFLOAT;
             case GL_RGB8 -> VK_FORMAT_R8G8B8A8_UNORM;
+            case GL_RGBA8 -> VK_FORMAT_R8G8B8A8_UNORM;
             default -> {throw new IllegalArgumentException("Unknown gl2vk type: "+internalFormat+" -> "+internalFormat.getGlFormat());}
         };
     }
