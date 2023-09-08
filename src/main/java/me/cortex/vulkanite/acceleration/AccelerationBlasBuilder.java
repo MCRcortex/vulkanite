@@ -39,8 +39,8 @@ import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 public class AccelerationBlasBuilder {
     private final VContext context;
     private record BLASTriangleData(int quadCount, NativeBuffer geometry, int geometryFlags) {}
-    private record BLASBuildJob(List<BLASTriangleData> geometries, RenderSection section, long time, long[] gpuVertexGeometryPointers) {}
-    public record BLASBuildResult(VAccelerationStructure structure, RenderSection section, long time, long[] gpuVertexGeometryPointers) {}
+    private record BLASBuildJob(List<BLASTriangleData> geometries, RenderSection section, long time, List<VBuffer> gpuVertexGeometry) {}
+    public record BLASBuildResult(VAccelerationStructure structure, RenderSection section, long time, List<VBuffer> gpuVertexGeometry) {}
     public record BLASBatchResult(List<BLASBuildResult> results, VSemaphore semaphore) { }
     private final Thread worker;
     private final int asyncQueue;
@@ -289,7 +289,7 @@ public class AccelerationBlasBuilder {
 
                         compactedAS[idx] = as;
                         var job = jobs.get(idx);
-                        results.add(new BLASBuildResult(as, job.section, job.time, job.gpuVertexGeometryPointers));
+                        results.add(new BLASBuildResult(as, job.section, job.time, job.gpuVertexGeometry));
                     }
 
                     vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, null, null, null);
@@ -339,12 +339,23 @@ public class AccelerationBlasBuilder {
             if (acbr == null)
                 continue;
             List<BLASTriangleData> buildData = new ArrayList<>();
+            List<VBuffer> geometryBuffers = new ArrayList<>();
             for (var entry : acbr.entrySet()) {
                 //TODO: dont hardcode the stride size
                 int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID?VK_GEOMETRY_OPAQUE_BIT_KHR:0;
                 buildData.add(new BLASTriangleData(entry.getValue().quadCount(), entry.getValue().data(), flag));
+
+                var geometry = cbr.getMesh(entry.getKey());
+
+                var buff = context.memory.createBufferGlobal(geometry.getVertexData().getLength(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT|VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                long ptr = buff.map();
+                MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.getVertexData().getDirectBuffer()), ptr, geometry.getVertexData().getLength());
+                buff.unmap();
+
+                geometryBuffers.add(buff);
             }
-            jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime, new long[3]));
+
+            jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime, geometryBuffers));
         }
 
         if (jobs.isEmpty()) {

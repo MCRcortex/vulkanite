@@ -2,6 +2,7 @@ package me.cortex.vulkanite.acceleration;
 
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
+import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
@@ -69,5 +70,9 @@ public class AccelerationManager {
         syncs.forEach(VSemaphore::free);
         syncs.clear();
         tlasManager.cleanupTick();
+    }
+
+    public VBuffer getReferenceBuffer() {
+        return tlasManager.getReferenceBuffer();
     }
 }

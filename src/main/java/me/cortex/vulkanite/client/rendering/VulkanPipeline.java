@@ -139,7 +139,6 @@ public class VulkanPipeline {
 
         var out = ctx.sync.createSharedBinarySemaphore();
         VBuffer uboBuffer;
-        VBuffer refBuffer;
         {
             uboBuffer = ctx.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             long ptr = uboBuffer.map();
@@ -181,15 +180,13 @@ public class VulkanPipeline {
             uboBuffer.unmap();
             uboBuffer.flush();
 
-            refBuffer = ctx.memory.createBuffer(1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,16);
-
             long desc = descriptors.get(fidx);
 
             new DescriptorUpdateBuilder(ctx, 5)
                     .set(desc)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
-                    .buffer(2, refBuffer)
+                    .buffer(2, accelerationManager.getReferenceBuffer())
                     .imageStore(3, view)
                     .imageSampler(4, blockView, sampler)
                     .apply();
@@ -238,10 +235,7 @@ public class VulkanPipeline {
                 cmd.enqueueFree();
                 fence.free();
 
-
-                //TODO: figure out how to free the out semaphore
                 uboBuffer.free();
-                refBuffer.free();
                 if (semCapture != null) {
                     semCapture.free();
                 }
@@ -262,6 +256,7 @@ public class VulkanPipeline {
         }
         layout.free();
         descriptors.free();
+        ctx.sync.checkFences();
         singleUsePool.doReleases();
         singleUsePool.free();
         if (previousSemaphore != null) {

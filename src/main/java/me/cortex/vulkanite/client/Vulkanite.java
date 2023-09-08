@@ -16,6 +16,8 @@ import java.util.List;
 
 import static org.lwjgl.vulkan.EXTDebugUtils.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.EXTDescriptorIndexing.VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
+import static org.lwjgl.vulkan.KHR16bitStorage.VK_KHR_16BIT_STORAGE_EXTENSION_NAME;
+import static org.lwjgl.vulkan.KHR8bitStorage.VK_KHR_8BIT_STORAGE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRDeferredHostOperations.VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
@@ -120,10 +122,14 @@ public class Vulkanite {
                         VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
                         VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
 
-                        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME),
+                        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+
+                        VK_KHR_16BIT_STORAGE_EXTENSION_NAME,
+                        VK_KHR_8BIT_STORAGE_EXTENSION_NAME
+                ),
                 List.of(),
                 new float[]{1.0f, 0.9f},
-                features -> features.shaderInt64(true).multiDrawIndirect(true), List.of(
+                features -> features.shaderInt16(true).shaderInt64(true).multiDrawIndirect(true), List.of(
                         stack-> VkPhysicalDeviceBufferDeviceAddressFeaturesKHR.calloc(stack)
                                 .sType$Default()
                                 .bufferDeviceAddress(true),

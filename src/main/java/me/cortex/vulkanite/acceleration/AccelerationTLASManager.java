@@ -3,6 +3,7 @@ package me.cortex.vulkanite.acceleration;
 //TLAS manager, ingests blas build requests and manages builds and syncs the tlas
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
@@ -305,12 +306,27 @@ public class AccelerationTLASManager {
 
     private final class TLASSectionManager extends TLASGeometryManager {
         private final TlasPointerArena arena = new TlasPointerArena(30000);
+        private final long arrayRef = MemoryUtil.nmemCalloc(30000 * 3, 8);
+        public VBuffer geometryReferenceBuffer;
+
+        @Override
+        public void setGeometryUpdateMemory(VCmdBuff cmd, VFence fence, VkAccelerationStructureGeometryKHR struct) {
+            super.setGeometryUpdateMemory(cmd, fence, struct);
+            var ref = geometryReferenceBuffer;
+            if (ref != null) {
+                context.sync.addCallback(fence, ref::free);
+            }
+            geometryReferenceBuffer = context.memory.createBufferGlobal(8L *arena.maxIndex, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            long ptr = geometryReferenceBuffer.map();
+            MemoryUtil.memCopy(arrayRef, ptr, 8L * arena.maxIndex);
+            geometryReferenceBuffer.unmap();
+        }
 
         //TODO: mixinto RenderSection and add a reference to a holder for us, its much faster than a hashmap
         private static final class Holder {
             final int id;
             int geometryIndex = -1;
-            int geometryCount = -1;
+            List<VBuffer> geometryBuffers;
 
             final RenderSection section;
             VAccelerationStructure structure;
@@ -331,14 +347,21 @@ public class AccelerationTLASManager {
             holder.structure = result.structure();
 
             if (holder.geometryIndex != -1) {
-                holder.geometryCount = result.gpuVertexGeometryPointers().length;
-                holder.geometryIndex = arena.allocate(holder.geometryCount);
+                arena.free(holder.geometryIndex, holder.geometryBuffers.size());
+                holder.geometryBuffers.forEach(buffer -> Vulkanite.INSTANCE.addSyncedCallback(buffer::free));
             }
+            holder.geometryBuffers = result.gpuVertexGeometry();
+            holder.geometryIndex = arena.allocate(holder.geometryBuffers.size());
+
+            for (int i = 0; i < holder.geometryBuffers.size(); i++) {
+                MemoryUtil.memPutAddress(arrayRef + 8L*(holder.geometryIndex+i), holder.geometryBuffers.get(i).deviceAddress());
+            }
+
 
             try (var stack = stackPush()) {
                 var asi = VkAccelerationStructureInstanceKHR.calloc(stack)
                         .mask(~0)
-                        .instanceCustomIndex(holder.id)
+                        .instanceCustomIndex(holder.geometryIndex)
                         .accelerationStructureReference(holder.structure.deviceAddress);
                 asi.transform()
                         .matrix(new Matrix4x3f()
@@ -358,8 +381,9 @@ public class AccelerationTLASManager {
             free(holder.id);
 
             if (holder.geometryIndex != -1) {
-                arena.free(holder.geometryIndex, holder.geometryCount);
+                arena.free(holder.geometryIndex, holder.geometryBuffers.size());
             }
+            holder.geometryBuffers.forEach(buffer -> Vulkanite.INSTANCE.addSyncedCallback(buffer::free));
         }
     }
 
@@ -397,6 +421,10 @@ public class AccelerationTLASManager {
 
             maxIndex = vacant.previousClearBit(maxIndex) + 1;
         }
+    }
+
+    public VBuffer getReferenceBuffer() {
+        return buildDataManager.geometryReferenceBuffer;
     }
 
     //Called for cleaning up any remaining loose resources
