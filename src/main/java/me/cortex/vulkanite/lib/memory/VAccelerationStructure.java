@@ -6,6 +6,7 @@ import org.lwjgl.vulkan.VkAccelerationStructureDeviceAddressInfoKHR;
 import org.lwjgl.vulkan.VkDevice;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
@@ -15,6 +16,7 @@ public class VAccelerationStructure extends TrackedResourceObject {
     public final VBuffer buffer;
     public final long deviceAddress;
     private final VkDevice device;
+
     VAccelerationStructure(VkDevice device, long structure, VBuffer buffer) {
         this.device = device;
         this.buffer = buffer;

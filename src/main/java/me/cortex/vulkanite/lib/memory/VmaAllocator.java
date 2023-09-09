@@ -151,6 +151,10 @@ public class VmaAllocator {
             //vmaFreeMemory(allocator, allocation);
             ai.free();
         }
+
+        public long size() {
+            return ai.size();
+        }
     }
 
     public class BufferAllocation extends Allocation {
@@ -228,6 +232,7 @@ public class VmaAllocator {
                 }
             }
         }
+
     }
 
     public class ImageAllocation extends Allocation {

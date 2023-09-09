@@ -51,4 +51,8 @@ public class VBuffer {
     public void flush(long offset, long size) {
         allocation.flush(offset, size);
     }
+
+    public long size() {
+        return allocation.size();
+    }
 }
