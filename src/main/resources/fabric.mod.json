@@ -3,17 +3,19 @@
   "id": "vulkanite",
   "version": "${version}",
   "name": "Vulkanite",
-  "description": "",
-  "authors": [],
+  "description": "A minecraft mod that brings hardware accelerated raytracing and other vulkan features to minecraft java edition",
+  "authors": ["Cortex"],
   "contact": {},
   "icon": "assets/vulkanite/icon.png",
-  "environment": "*",
+  "environment": "client",
   "entrypoints": {
   },
   "mixins": [
     "vulkanite.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=0.14.21"
+    "fabricloader": ">=0.14.21",
+    "iris": "=1.6.8",
+    "sodium": "=0.5.2"
   }
 }
