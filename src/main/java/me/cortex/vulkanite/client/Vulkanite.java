@@ -99,7 +99,7 @@ public class Vulkanite {
                         //VK_EXT_DEBUG_UTILS_EXTENSION_NAME
                 },
                 new String[] {
-                        "VK_LAYER_KHRONOS_validation",
+                        //"VK_LAYER_KHRONOS_validation",
                 });
 
         //This copies whatever gpu the opengl context is on
@@ -137,10 +137,6 @@ public class Vulkanite {
                         stack-> VkPhysicalDeviceAccelerationStructureFeaturesKHR.calloc(stack)
                                 .sType$Default()
                                 .accelerationStructure(true),
-
-                        stack-> VkPhysicalDeviceRayQueryFeaturesKHR.calloc(stack)
-                                .sType$Default()
-                                .rayQuery(true),
 
                         stack-> VkPhysicalDeviceRayTracingPipelineFeaturesKHR.calloc(stack)
                                 .sType$Default()
