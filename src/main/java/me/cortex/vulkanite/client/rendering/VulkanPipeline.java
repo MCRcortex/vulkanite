@@ -109,6 +109,8 @@ public class VulkanPipeline {
     private VImageView blockView;
 
     private VSemaphore previousSemaphore;
+
+    private int frameId;
     public void renderPostShadows(VGImage outImg, Camera camera) {
         this.singleUsePool.doReleases();
 
@@ -176,6 +178,8 @@ public class VulkanPipeline {
                 Vector3f vec3 = new Vector3f(position.x(), position.y(), position.z());
                 vec3.normalize();
                 vec3.get(Float.BYTES * 32, bb);
+
+                bb.putInt(Float.BYTES * 35, frameId++);
             }
             uboBuffer.unmap();
             uboBuffer.flush();
