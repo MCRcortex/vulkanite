@@ -117,7 +117,7 @@ public class DescriptorUpdateBuilder {
                 .pImageInfo(VkDescriptorImageInfo
                         .calloc(1, stack)
                         .imageLayout(layout)
-                        .imageView(view.view)
+                        .imageView(view==null?0:view.view)
                         .sampler(sampler.sampler));
         return this;
     }

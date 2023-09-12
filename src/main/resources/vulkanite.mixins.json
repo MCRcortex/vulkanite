@@ -5,7 +5,10 @@
   "compatibilityLevel": "JAVA_17",
   "client": [
     "iris.MixinNewWorldRenderingPipeline",
+    "iris.MixinPBRAtlasTexture",
+    "iris.MixinProgramSet",
     "iris.MixinRenderTarget",
+    "iris.MixinShaderPackSourceNames",
     "minecraft.MixinAbstractTexture",
     "minecraft.MixinMinecraftClient",
     "minecraft.MixinSpriteAtlasTexture",
@@ -17,9 +20,7 @@
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSection",
     "sodium.MixinRenderSectionManager",
-    "sodium.VertexFormatAccessor",
-    "iris.MixinProgramSet",
-    "iris.MixinShaderPackSourceNames"
+    "sodium.VertexFormatAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -13,15 +13,19 @@ import me.cortex.vulkanite.lib.descriptors.VDescriptorPool;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.memory.VGImage;
+import me.cortex.vulkanite.lib.memory.VImage;
 import me.cortex.vulkanite.lib.other.VImageView;
 import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
 import me.cortex.vulkanite.lib.pipeline.VShader;
+import net.coderbot.iris.texture.pbr.PBRTextureHolder;
+import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.texture.AbstractTexture;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
@@ -62,12 +66,36 @@ public class VulkanPipeline {
 
     private final VSampler sampler;
 
+    private final SharedImageViewTracker composite0mainView;
+    private final SharedImageViewTracker blockAtlasView;
+    private final SharedImageViewTracker blockAtlasNormalView;
+    private final SharedImageViewTracker blockAtlasSpecularView;
+
     private int fidx;
 
     public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes) {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
         this.singleUsePool = ctx.cmd.createSingleUsePool();
+
+        {
+            this.composite0mainView = new SharedImageViewTracker(ctx, null);
+            this.blockAtlasView = new SharedImageViewTracker(ctx, ()->{
+                AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
+                return ((IVGImage)blockAtlas).getVGImage();
+            });
+            this.blockAtlasNormalView = new SharedImageViewTracker(ctx, ()->{
+                AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
+                PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
+                return ((IVGImage)holder.getNormalTexture()).getVGImage();
+            });
+            this.blockAtlasSpecularView = new SharedImageViewTracker(ctx, ()->{
+                AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
+                PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
+                return ((IVGImage)holder.getSpecularTexture()).getVGImage();
+            });
+        }
+
         this.sampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_NEAREST)
                 .minFilter(VK_FILTER_NEAREST)
                 .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
@@ -86,6 +114,8 @@ public class VulkanPipeline {
                     .binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL)//funni buffer buffer
                     .binding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)//output texture
                     .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
+                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
+                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
                     .build(ctx);
 
             //TODO: use frameahead count instead of just... 10
@@ -104,26 +134,25 @@ public class VulkanPipeline {
         }
     }
 
+    private static void applyImageBarrier(VkImageMemoryBarrier barrier, VImage image, int targetLayout, int targetAccess) {
+        barrier.sType$Default()
+                .sType$Default()
+                .image(image.image())
+                .oldLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                .newLayout(targetLayout)
+                .srcAccessMask(0)
+                .dstAccessMask(targetAccess)
+                .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT));
 
-    private VImageView view;
-    private VImageView blockView;
+    }
+
 
     private VSemaphore previousSemaphore;
 
     private int frameId;
     public void renderPostShadows(VGImage outImg, Camera camera) {
         this.singleUsePool.doReleases();
-
-        if (view == null || outImg != view.image) {
-            //TODO: free the old image with a fence or something kasjdhglkasjdg
-            view = new VImageView(ctx, outImg);
-        }
-
-        var blockImage = ((IVGImage)MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"))).getVGImage();
-        if (blockView == null || blockView.image != blockImage) {
-            //TODO: free the old image with a fence or something kasjdhglkasjdg
-            blockView = new VImageView(ctx, blockImage);
-        }
+        PBRTextureManager.notifyPBRTexturesChanged();
 
         var in = ctx.sync.createSharedBinarySemaphore();
         in.glSignal(new int[0], new int[]{outImg.glId}, new int[]{GL_LAYOUT_GENERAL_EXT});
@@ -186,13 +215,15 @@ public class VulkanPipeline {
 
             long desc = descriptors.get(fidx);
 
-            new DescriptorUpdateBuilder(ctx, 5)
+            new DescriptorUpdateBuilder(ctx, 7)
                     .set(desc)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
                     .buffer(2, accelerationManager.getReferenceBuffer())
-                    .imageStore(3, view)
-                    .imageSampler(4, blockView, sampler)
+                    .imageStore(3, composite0mainView.getView(()->outImg))
+                    .imageSampler(4, blockAtlasView.getView(), sampler)
+                    .imageSampler(5, blockAtlasNormalView.getView(), sampler)
+                    .imageSampler(6, blockAtlasSpecularView.getView(), sampler)
                     .apply();
 
 
@@ -201,23 +232,16 @@ public class VulkanPipeline {
             cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
             try (var stack = stackPush()) {
-                vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 0, null, null,
-                        VkImageMemoryBarrier.calloc(2, stack).apply(0, a->a
-                                .sType$Default()
-                                .image(view.image.image())
-                                .oldLayout(VK_IMAGE_LAYOUT_UNDEFINED)
-                                .newLayout(VK_IMAGE_LAYOUT_GENERAL)
-                                .srcAccessMask(0)
-                                .dstAccessMask(VK_ACCESS_SHADER_WRITE_BIT)
-                                .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT)))
-                                .apply(1, a->a
-                                        .sType$Default()
-                                        .image(blockView.image.image())
-                                        .oldLayout(VK_IMAGE_LAYOUT_UNDEFINED)
-                                        .newLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-                                        .srcAccessMask(0)
-                                        .dstAccessMask(VK_ACCESS_SHADER_READ_BIT)
-                                        .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT))));
+                var barriers = VkImageMemoryBarrier.calloc(4, stack);
+                applyImageBarrier(barriers.get(), composite0mainView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_SHADER_WRITE_BIT);
+                applyImageBarrier(barriers.get(), blockAtlasView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+                var image = blockAtlasNormalView.getImage();
+                if (image != null) applyImageBarrier(barriers.get(), image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+                image = blockAtlasSpecularView.getImage();
+                if (image != null) applyImageBarrier(barriers.get(), image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+                barriers.limit(barriers.position());
+                barriers.rewind();
+                vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 0, null, null, barriers);
             }
 
             for (var pipeline : raytracePipelines) {
@@ -266,12 +290,10 @@ public class VulkanPipeline {
         if (previousSemaphore != null) {
             previousSemaphore.free();
         }
-        if (view != null) {
-            view.free();
-        }
-        if (blockView != null) {
-            blockView.free();
-        }
+        composite0mainView.free();
+        blockAtlasView.free();
+        blockAtlasNormalView.free();
+        blockAtlasSpecularView.free();
         sampler.free();
     }
 }

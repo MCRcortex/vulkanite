@@ -1,8 +1,9 @@
-package me.cortex.vulkanite.mixin.minecraft;
+package me.cortex.vulkanite.mixin.iris;
 
 import com.mojang.blaze3d.platform.GlStateManager;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVGImage;
+import net.coderbot.iris.texture.pbr.PBRAtlasTexture;
 import net.minecraft.client.texture.AbstractTexture;
 import net.minecraft.client.texture.SpriteAtlasTexture;
 import org.spongepowered.asm.mixin.Mixin;
@@ -13,8 +14,8 @@ import static org.lwjgl.opengl.GL11C.GL_RGBA8;
 import static org.lwjgl.opengl.GL11C.glDeleteTextures;
 import static org.lwjgl.vulkan.VK10.*;
 
-@Mixin(SpriteAtlasTexture.class)
-public abstract class MixinSpriteAtlasTexture extends AbstractTexture implements IVGImage  {
+@Mixin(PBRAtlasTexture.class)
+public abstract class MixinPBRAtlasTexture extends AbstractTexture implements IVGImage  {
     @Redirect(method = "upload", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/TextureUtil;prepareImage(IIII)V"))
     private void redirect(int id, int maxLevel, int width, int height) {
         if (getVGImage() != null) {
