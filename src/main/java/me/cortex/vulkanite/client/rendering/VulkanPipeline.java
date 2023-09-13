@@ -309,6 +309,8 @@ public class VulkanPipeline {
         blockAtlasView.free();
         blockAtlasNormalView.free();
         blockAtlasSpecularView.free();
+        placeholderImageView.free();
+        placeholderImage.free();
         sampler.free();
     }
 }
