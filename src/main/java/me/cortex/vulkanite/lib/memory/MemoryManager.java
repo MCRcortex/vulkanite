@@ -17,7 +17,6 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_MEMORY_USAGE_AUTO;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.vkCreateAccelerationStructureKHR;
-import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 import static org.lwjgl.vulkan.KHRExternalMemoryWin32.vkGetMemoryWin32HandleKHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
@@ -163,6 +162,26 @@ public class MemoryManager {
         }
     }
 
+    public VImage creatImage2D(int width, int height, int mipLevels, int vkFormat, int usage, int properties) {
+        try (var stack = stackPush()) {
+            var alloc = nonshared.alloc(VkImageCreateInfo
+                .calloc(stack)
+                .sType$Default()
+                .format(vkFormat)
+                .imageType(VK_IMAGE_TYPE_2D)
+                .tiling(VK_IMAGE_TILING_OPTIMAL)
+                .samples(VK_SAMPLE_COUNT_1_BIT)
+                .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                .arrayLayers(1)
+                .mipLevels(mipLevels)
+                .extent(e -> e.width(width).height(height).depth(1))
+                .usage(usage),
+                    VmaAllocationCreateInfo.calloc(stack)
+                            .usage(VMA_MEMORY_USAGE_AUTO)
+                            .requiredFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+            return new VImage(alloc, width, height, mipLevels, vkFormat);
+        }
+    }
 
     public VAccelerationStructure createAcceleration(long size, int alignment, int usage, int type) {
         var buffer = createBuffer(size, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, alignment);
