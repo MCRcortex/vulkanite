@@ -16,9 +16,9 @@ import java.util.concurrent.locks.ReentrantLock;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.*;
-import static org.lwjgl.vulkan.KHRBufferDeviceAddress.vkGetBufferDeviceAddressKHR;
 import static org.lwjgl.vulkan.VK10.*;
-import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+import static org.lwjgl.vulkan.VK12.*;
+import static org.lwjgl.vulkan.VK11.VK_API_VERSION_1_1;
 
 //TODO: make multiple pools for allocations
 public class VmaAllocator {
@@ -36,6 +36,7 @@ public class VmaAllocator {
                     .pVulkanFunctions(VmaVulkanFunctions
                             .calloc(stack)
                             .set(device.getPhysicalDevice().getInstance(), device))
+                    .vulkanApiVersion(VK_API_VERSION_1_2)
                     .flags(enableDeviceAddresses?VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT:0);
 
             /*
@@ -165,7 +166,7 @@ public class VmaAllocator {
             this.buffer = buffer;
             if (hasDeviceAddresses && hasDeviceAddress) {
                 try (MemoryStack stack = stackPush()) {
-                    deviceAddress = vkGetBufferDeviceAddressKHR(device, VkBufferDeviceAddressInfo
+                    deviceAddress = vkGetBufferDeviceAddress(device, VkBufferDeviceAddressInfo
                             .calloc(stack)
                             .sType$Default()
                             .buffer(buffer));

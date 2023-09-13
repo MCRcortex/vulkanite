@@ -19,6 +19,7 @@ import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memUTF8;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK11.*;
 
 public class VInitializer {
     private final VkInstance instance;
@@ -91,8 +92,12 @@ public class VInitializer {
             }
 
             long chain = createInfo.address();
+            var deviceProperties2 = VkPhysicalDeviceFeatures2.calloc(stack).sType$Default();
             for (var applicator : applicators) {
-                long next = applicator.apply(stack).address();
+                Struct feature = applicator.apply(stack);
+                deviceProperties2.pNext(feature.address());
+                vkGetPhysicalDeviceFeatures2(physicalDevice, deviceProperties2);
+                long next = feature.address();
                 MemoryUtil.memPutAddress(chain+8, next);
                 chain = next;
             }

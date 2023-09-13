@@ -112,40 +112,28 @@ public class Vulkanite {
                         VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
                         VK_KHR_SPIRV_1_4_EXTENSION_NAME,
                         VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
-                        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
 
                         //VK_KHR_RAY_QUERY_EXTENSION_NAME,
 
                         VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
                         VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
 
-                        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-
-                        VK_KHR_16BIT_STORAGE_EXTENSION_NAME,
-                        VK_KHR_8BIT_STORAGE_EXTENSION_NAME
+                        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
                 ),
                 List.of(),
                 new float[]{1.0f, 0.9f},
                 features -> features.shaderInt16(true).shaderInt64(true).multiDrawIndirect(true), List.of(
                         stack-> VkPhysicalDeviceAccelerationStructureFeaturesKHR.calloc(stack)
-                                .sType$Default()
-                                .accelerationStructure(true),
+                                .sType$Default(),
 
                         stack-> VkPhysicalDeviceRayTracingPipelineFeaturesKHR.calloc(stack)
-                                .sType$Default()
-                                .rayTracingPipeline(true)
-                                .rayTracingPipelineTraceRaysIndirect(true),
+                                .sType$Default(),
 
-                        stack-> VkPhysicalDevice16BitStorageFeatures.calloc(stack)
-                                .sType$Default()
-                                .storageBuffer16BitAccess(true),
+                        stack-> VkPhysicalDeviceVulkan11Features.calloc(stack)
+                                .sType$Default(),
 
                         stack-> VkPhysicalDeviceVulkan12Features.calloc(stack)
                                 .sType$Default()
-                                .storageBuffer8BitAccess(true)
-                                .shaderInt8(true)
-                                .bufferDeviceAddress(true)
-                                .descriptorIndexing(true)
                 ));
 
         return init.createContext();
