@@ -13,8 +13,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import static org.lwjgl.opengl.GL11C.*;
-import static org.lwjgl.opengl.GL30C.GL_R11F_G11F_B10F;
-import static org.lwjgl.opengl.GL30C.GL_RGBA32F;
+import static org.lwjgl.opengl.GL30C.*;
 import static org.lwjgl.vulkan.VK10.*;
 
 @Mixin(value = RenderTarget.class, remap = false)
@@ -80,9 +79,9 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
         return switch (gl) {
             case GL_R11F_G11F_B10F -> VK_FORMAT_B10G11R11_UFLOAT_PACK32;
             case GL_RGBA16 -> VK_FORMAT_R16G16B16A16_UNORM;
-            case GL_RGBA32F -> VK_FORMAT_R32G32B32A32_SFLOAT;
-            case GL_RGB8 -> VK_FORMAT_R8G8B8A8_UNORM;
-            case GL_RGBA8 -> VK_FORMAT_R8G8B8A8_UNORM;
+            case GL_RGB32F, GL_RGBA32F -> VK_FORMAT_R32G32B32A32_SFLOAT;
+            case GL_RGB8, GL_RGBA8 -> VK_FORMAT_R8G8B8A8_UNORM;
+            case GL_R16F -> VK_FORMAT_R16_SFLOAT;
             default -> {throw new IllegalArgumentException("Unknown gl2vk type: "+internalFormat+" -> "+internalFormat.getGlFormat());}
         };
     }

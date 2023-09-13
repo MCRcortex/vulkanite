@@ -23,8 +23,10 @@ import me.cortex.vulkanite.lib.pipeline.VShader;
 import net.coderbot.iris.texture.pbr.PBRTextureHolder;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
+import net.coderbot.iris.uniforms.CommonUniforms;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.CameraSubmersionType;
 import net.minecraft.client.texture.AbstractTexture;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
@@ -209,6 +211,9 @@ public class VulkanPipeline {
                 vec3.get(Float.BYTES * 32, bb);
 
                 bb.putInt(Float.BYTES * 35, frameId++);
+
+                int flags = isEyeInWater()&3;
+                bb.putInt(Float.BYTES * 36, flags);
             }
             uboBuffer.unmap();
             uboBuffer.flush();
@@ -295,5 +300,19 @@ public class VulkanPipeline {
         blockAtlasNormalView.free();
         blockAtlasSpecularView.free();
         sampler.free();
+    }
+
+
+
+    //Copied from CommonUniforms
+    static int isEyeInWater() {
+        CameraSubmersionType var0 = MinecraftClient.getInstance().gameRenderer.getCamera().getSubmersionType();
+        if (var0 == CameraSubmersionType.WATER) {
+            return 1;
+        } else if (var0 == CameraSubmersionType.LAVA) {
+            return 2;
+        } else {
+            return var0 == CameraSubmersionType.POWDER_SNOW ? 3 : 0;
+        }
     }
 }
