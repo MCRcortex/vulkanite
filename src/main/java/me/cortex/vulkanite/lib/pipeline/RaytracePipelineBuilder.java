@@ -193,9 +193,9 @@ public class RaytracePipelineBuilder {
 
                 return new VRaytracePipeline(context, pPipeline.get(0), pLayout.get(0), sbtMap,
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + rgenBase, handleSizeAligned, handleSizeAligned),
-                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + missGroupBase, handleSizeAligned,handleSizeAligned * missGroupBase),
-                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + hitGroupsBase, handleSizeAligned,handleSizeAligned * hitGroupsBase),
-                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + callGroupBase, handleSizeAligned,handleSizeAligned * callGroupBase),
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + missGroupBase, handleSizeAligned, handleSizeAligned * missGroupCount),
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + hitGroupsBase, handleSizeAligned, handleSizeAligned * hitGroupsCount),
+                        VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + callGroupBase, handleSizeAligned, handleSizeAligned * callGroupCount),
                         shaders
                 );
             }

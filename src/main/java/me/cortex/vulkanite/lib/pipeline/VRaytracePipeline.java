@@ -59,5 +59,9 @@ public class VRaytracePipeline extends TrackedResourceObject {
         free0();
         vkDestroyPipeline(context.device, pipeline, null);
         stbMap.free();
+        gen.free();
+        miss.free();
+        hit.free();
+        callable.free();
     }
 }

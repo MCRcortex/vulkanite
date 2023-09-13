@@ -7,10 +7,7 @@ import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
-import org.lwjgl.vulkan.VkPhysicalDeviceAccelerationStructureFeaturesKHR;
-import org.lwjgl.vulkan.VkPhysicalDeviceBufferDeviceAddressFeaturesKHR;
-import org.lwjgl.vulkan.VkPhysicalDeviceRayQueryFeaturesKHR;
-import org.lwjgl.vulkan.VkPhysicalDeviceRayTracingPipelineFeaturesKHR;
+import org.lwjgl.vulkan.*;
 
 import java.util.List;
 
@@ -130,10 +127,6 @@ public class Vulkanite {
                 List.of(),
                 new float[]{1.0f, 0.9f},
                 features -> features.shaderInt16(true).shaderInt64(true).multiDrawIndirect(true), List.of(
-                        stack-> VkPhysicalDeviceBufferDeviceAddressFeaturesKHR.calloc(stack)
-                                .sType$Default()
-                                .bufferDeviceAddress(true),
-
                         stack-> VkPhysicalDeviceAccelerationStructureFeaturesKHR.calloc(stack)
                                 .sType$Default()
                                 .accelerationStructure(true),
@@ -141,7 +134,18 @@ public class Vulkanite {
                         stack-> VkPhysicalDeviceRayTracingPipelineFeaturesKHR.calloc(stack)
                                 .sType$Default()
                                 .rayTracingPipeline(true)
-                                .rayTracingPipelineTraceRaysIndirect(true)
+                                .rayTracingPipelineTraceRaysIndirect(true),
+
+                        stack-> VkPhysicalDevice16BitStorageFeatures.calloc(stack)
+                                .sType$Default()
+                                .storageBuffer16BitAccess(true),
+
+                        stack-> VkPhysicalDeviceVulkan12Features.calloc(stack)
+                                .sType$Default()
+                                .storageBuffer8BitAccess(true)
+                                .shaderInt8(true)
+                                .bufferDeviceAddress(true)
+                                .descriptorIndexing(true)
                 ));
 
         return init.createContext();
