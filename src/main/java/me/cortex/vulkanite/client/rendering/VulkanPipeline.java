@@ -51,9 +51,7 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
-import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
-import static org.lwjgl.vulkan.VK10.VK_SHADER_STAGE_ALL;
 
 public class VulkanPipeline {
     private final VContext ctx;
@@ -70,6 +68,9 @@ public class VulkanPipeline {
     private final SharedImageViewTracker blockAtlasView;
     private final SharedImageViewTracker blockAtlasNormalView;
     private final SharedImageViewTracker blockAtlasSpecularView;
+
+    private final VImage placeholderImage;
+    private final VImageView placeholderImageView;
 
     private int fidx;
 
@@ -94,6 +95,20 @@ public class VulkanPipeline {
                 PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
                 return ((IVGImage)holder.getSpecularTexture()).getVGImage();
             });
+            this.placeholderImage = ctx.memory.creatImage2D(1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            this.placeholderImageView = new VImageView(ctx, placeholderImage);
+        
+            try (var stack = stackPush()) {
+                var cmd = singleUsePool.createCommandBuffer();
+                cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+                var barriers = VkImageMemoryBarrier.calloc(1, stack);
+                applyImageBarrier(barriers.get(0), placeholderImage, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_MEMORY_READ_BIT);
+                vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, null, null, barriers);
+                cmd.end();
+
+                ctx.cmd.submit(0, VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(stack.pointers(cmd)));
+            }
         }
 
         this.sampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_NEAREST)
@@ -215,7 +230,7 @@ public class VulkanPipeline {
 
             long desc = descriptors.get(fidx);
 
-            new DescriptorUpdateBuilder(ctx, 7)
+            new DescriptorUpdateBuilder(ctx, 7, placeholderImageView)
                     .set(desc)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
