@@ -144,9 +144,6 @@ public class RaytracePipelineBuilder {
                 long groupBaseAlignment = props.shaderGroupBaseAlignment();
                 long handleSize = props.shaderGroupHandleSize();
                 long handleSizeAligned = alignUp(handleSize, props.shaderGroupHandleAlignment());
-                if (handleSizeAligned != handleSize) {
-                    throw new IllegalStateException("Painpoint, handleSizeAligned != handleSize");
-                }
 
                 int totalGroups = groupsArr.capacity();
 
@@ -158,7 +155,8 @@ public class RaytracePipelineBuilder {
                 long callGroupBase = alignUp(hitGroupsBase + handleSizeAligned * hitGroupsCount, groupBaseAlignment);
                 long callGroupCount = callGroups.size();
 
-                long sbtSize = alignUp(callGroupBase + callGroupCount * handleSizeAligned, groupBaseAlignment);
+                // Pad an extra handle size at the end, so that even if we don't have call groups, the address is still in bounds
+                long sbtSize = alignUp(callGroupBase + callGroupCount * handleSizeAligned + handleSizeAligned, groupBaseAlignment);
 
                 ByteBuffer handles = stack.malloc(totalGroups * (int)handleSize);
                 _CHECK_(vkGetRayTracingShaderGroupHandlesKHR(context.device, pPipeline.get(0), 0, totalGroups, handles),
@@ -167,27 +165,33 @@ public class RaytracePipelineBuilder {
                 long aHandles = MemoryUtil.memAddress(handles);
 
                 //TODO/FIXME: add alignment to gpu buffer
-                VBuffer sbtMap = context.memory.createBufferGlobal(sbtSize,
+                VBuffer sbtMap = context.memory.createBuffer(sbtSize,
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                 VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR,
                         VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                        0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
                 long ptr = sbtMap.map();
 
                 // Groups in order of RayGen, Miss Groups, Hit Groups, and callable
                 // 1. Copy ray gen
-                memCopy(aHandles, ptr + rgenBase, handleSize);//TODO: FIXME: FINISH
+                memCopy(aHandles, ptr + rgenBase, handleSize);
                 aHandles += handleSize;
                 // 2. Copy miss groups
-                memCopy(aHandles, ptr + missGroupBase, handleSize * missGroupCount);
-                aHandles += handleSize * missGroupCount;
+                for (int i = 0; i < missGroupCount; i++) {
+                    memCopy(aHandles, ptr + missGroupBase + handleSizeAligned * i, handleSize);
+                    aHandles += handleSize;
+                }
                 // 3. Copy hit groups
-                memCopy(aHandles, ptr + hitGroupsBase, handleSize);
-                aHandles += handleSize * hitGroupsCount;
+                for (int i = 0; i < hitGroupsCount; i++) {
+                    memCopy(aHandles, ptr + hitGroupsBase + handleSizeAligned * i, handleSize);
+                    aHandles += handleSize;
+                }
                 // 4. Copy callable
-                memCopy(aHandles, ptr + callGroupBase, handleSize);
-                aHandles += handleSize * missGroupCount;
+                for (int i = 0; i < callGroupCount; i++) {
+                    memCopy(aHandles, ptr + callGroupBase + handleSizeAligned * i, handleSize);
+                    aHandles += handleSize;
+                }
 
                 sbtMap.unmap();
                 sbtMap.flush();

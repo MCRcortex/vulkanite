@@ -13,6 +13,7 @@ import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.memory.VImage;
+import me.cortex.vulkanite.lib.other.VImageView;
 import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
@@ -180,7 +181,10 @@ public class VulkanPipeline {
         var out = ctx.sync.createSharedBinarySemaphore();
         VBuffer uboBuffer;
         {
-            uboBuffer = ctx.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            uboBuffer = ctx.memory.createBuffer(1024,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                    0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             long ptr = uboBuffer.map();
             MemoryUtil.memSet(ptr, 0, 1024);
             {

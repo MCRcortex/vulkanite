@@ -149,7 +149,7 @@ public class AccelerationTLASManager {
             // get automatically freed since we using vma dont have to worry about performance _too_ much i think
             VBuffer scratchBuffer = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256);
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256, 0);
 
             buildInfo.dstAccelerationStructure(tlas.structure)
                     .scratchData(VkDeviceOrHostAddressKHR.calloc(stack)
@@ -230,7 +230,12 @@ public class AccelerationTLASManager {
         //TODO: make the instances buffer, gpu permenent then stream updates instead of uploading per frame
         public void setGeometryUpdateMemory(VCmdBuff cmd, VFence fence, VkAccelerationStructureGeometryKHR struct) {
             long size = (long) VkAccelerationStructureInstanceKHR.SIZEOF * count;
-            VBuffer data = context.memory.createBufferGlobal(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            VBuffer data = context.memory.createBuffer(size,
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                            | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                            | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                    VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                    0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             long ptr = data.map();
             MemoryUtil.memCopy(this.instances.address(0), ptr, size);
             data.unmap();
@@ -316,7 +321,10 @@ public class AccelerationTLASManager {
             if (ref != null) {
                 context.sync.addCallback(fence, ref::free);
             }
-            geometryReferenceBuffer = context.memory.createBufferGlobal(8L *arena.maxIndex, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            geometryReferenceBuffer = context.memory.createBuffer(8L * arena.maxIndex,
+                    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                    VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                    0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             long ptr = geometryReferenceBuffer.map();
             MemoryUtil.memCopy(arrayRef, ptr, 8L * arena.maxIndex);
             geometryReferenceBuffer.unmap();

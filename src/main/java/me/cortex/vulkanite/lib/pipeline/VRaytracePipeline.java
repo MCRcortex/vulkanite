@@ -17,7 +17,7 @@ public class VRaytracePipeline extends TrackedResourceObject {
     private final VContext context;
     private final long pipeline;
     private final long layout;
-    private final VBuffer stbMap;
+    private final VBuffer shader_binding_table;
     private final VkStridedDeviceAddressRegionKHR gen;
     private final VkStridedDeviceAddressRegionKHR miss;
     private final VkStridedDeviceAddressRegionKHR hit;
@@ -34,7 +34,7 @@ public class VRaytracePipeline extends TrackedResourceObject {
         this.context = context;
         this.pipeline = pipeline;
         this.layout = layout;
-        this.stbMap = sbtMap;
+        this.shader_binding_table = sbtMap;
         this.gen = raygen;
         this.miss = miss;
         this.hit = hit;
@@ -57,7 +57,7 @@ public class VRaytracePipeline extends TrackedResourceObject {
     public void free() {
         free0();
         vkDestroyPipeline(context.device, pipeline, null);
-        stbMap.free();
+        shader_binding_table.free();
         gen.free();
         miss.free();
         hit.free();
