@@ -2,11 +2,9 @@ package me.cortex.vulkanite.compat;
 
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
-import me.cortex.vulkanite.lib.pipeline.ShaderModule;
-import me.cortex.vulkanite.lib.pipeline.VShader;
+import me.cortex.vulkanite.lib.shader.ShaderModule;
+import me.cortex.vulkanite.lib.shader.VShader;
 
-import java.io.File;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 

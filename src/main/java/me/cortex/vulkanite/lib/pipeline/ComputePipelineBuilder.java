@@ -2,6 +2,7 @@ package me.cortex.vulkanite.lib.pipeline;
 
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
+import me.cortex.vulkanite.lib.shader.ShaderModule;
 import org.lwjgl.vulkan.*;
 
 import java.nio.LongBuffer;

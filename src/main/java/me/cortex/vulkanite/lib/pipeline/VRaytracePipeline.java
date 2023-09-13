@@ -4,10 +4,9 @@ import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VBuffer;
-import me.cortex.vulkanite.lib.other.sync.VFence;
+import me.cortex.vulkanite.lib.shader.ShaderModule;
 import org.lwjgl.vulkan.VkStridedDeviceAddressRegionKHR;
 
-import java.util.List;
 import java.util.Set;
 
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
