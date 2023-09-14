@@ -15,7 +15,6 @@ public class SodiumResultAdapter {
     public static void compute(ChunkBuildOutput buildResult) {
         var ebr = (IAccelerationBuildResult) buildResult;
         Map<TerrainRenderPass, GeometryData> map = new HashMap<>();
-        ebr.setAccelerationGeometryData(map);
         for (var pass : buildResult.meshes.entrySet()) {
             var vertData = pass.getValue().getVertexData();
 
@@ -46,6 +45,12 @@ public class SodiumResultAdapter {
                 }
             }
             map.put(pass.getKey(), new GeometryData(vertices>>2, geometryBuffer));
+        }
+
+        if (!map.isEmpty()) {
+            ebr.setAccelerationGeometryData(map);
+        } else {
+            ebr.setAccelerationGeometryData(null);
         }
     }
 
