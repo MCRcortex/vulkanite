@@ -130,7 +130,12 @@ public class AccelerationBlasBuilder {
                         int indexType = SharedQuadVkIndexBuffer.TYPE;
 
                         //TODO: also need to store the buffer so it can be freed later (after blas build the vertex data can be freed as blas is self contained)
-                        var buf = context.memory.createBufferGlobal(geometry.geometry.getLength(), VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                        var buf = context.memory.createBuffer(geometry.geometry.getLength(),
+                                VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                                        | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                                        | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                                0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
                         long ptr = buf.map();
                         MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.geometry.getDirectBuffer()), ptr, geometry.geometry.getLength());
                         buf.unmap();
@@ -191,7 +196,7 @@ public class AccelerationBlasBuilder {
 
                     var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256);
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256, 0);
 
                     bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.deviceAddress()));
                     bi.dstAccelerationStructure(structure.structure);
@@ -347,7 +352,10 @@ public class AccelerationBlasBuilder {
 
                 var geometry = cbr.getMesh(entry.getKey());
 
-                var buff = context.memory.createBufferGlobal(geometry.getVertexData().getLength(), VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT|VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT|VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                var buff = context.memory.createBuffer(geometry.getVertexData().getLength(),
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                        0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
                 long ptr = buff.map();
                 MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.getVertexData().getDirectBuffer()), ptr, geometry.getVertexData().getLength());
                 buff.unmap();

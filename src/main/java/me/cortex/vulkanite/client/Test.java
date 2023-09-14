@@ -117,7 +117,8 @@ public class Test {
         var pool = context.cmd.createSingleUsePool();
         pool.createCommandBuffer();
 
-        var mem = context.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        var mem = context.memory.createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 0,
+                        0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
         mem.map();
         mem.unmap();
         mem.flush();
