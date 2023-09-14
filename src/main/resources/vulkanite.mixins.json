@@ -15,15 +15,18 @@
     "sodium.MixinChunkBuildResult",
     "sodium.MixinChunkRenderRebuildTask",
     "sodium.MixinCommandList",
+    "sodium.MixinGlBufferArena",
     "sodium.MixinGLRenderDevice",
     "sodium.MixinMutableBuffer",
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSection",
     "sodium.MixinRenderSectionManager",
-    "sodium.VertexFormatAccessor",
-    "sodium.MixinGlBufferArena"
+    "sodium.VertexFormatAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "mixins": [
+    "iris.MixinPackRenderTargetDirectives"
+  ]
 }
