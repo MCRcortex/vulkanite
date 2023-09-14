@@ -13,6 +13,7 @@ import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.memory.VImage;
+import me.cortex.vulkanite.lib.other.VImageView;
 import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
@@ -34,11 +35,9 @@ import org.lwjgl.vulkan.*;
 
 import java.nio.ByteBuffer;
 
-import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static net.coderbot.iris.uniforms.CelestialUniforms.getSunAngle;
 import static net.coderbot.iris.uniforms.CelestialUniforms.isDay;
 import static org.lwjgl.opengl.EXTSemaphore.GL_LAYOUT_GENERAL_EXT;
-import static org.lwjgl.opengl.EXTSemaphore.glSignalSemaphoreEXT;
 import static org.lwjgl.opengl.GL11C.glFinish;
 import static org.lwjgl.opengl.GL11C.glFlush;
 import static org.lwjgl.system.MemoryStack.stackPush;
