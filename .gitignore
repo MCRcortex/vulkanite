@@ -5,6 +5,10 @@
 *.ipr
 *.iws
 
+# VS Code
+.vscode/
+bin/
+
 # IntelliJ
 out/
 # mpeltonen/sbt-idea plugin

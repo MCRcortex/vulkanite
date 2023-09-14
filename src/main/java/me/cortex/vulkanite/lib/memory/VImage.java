@@ -3,7 +3,7 @@ package me.cortex.vulkanite.lib.memory;
 import java.lang.ref.Cleaner;
 
 public class VImage {
-    private VmaAllocator.ImageAllocation allocation;
+    protected VmaAllocator.ImageAllocation allocation;
     public final int width;
     public final int height;
     public final int mipLayers;

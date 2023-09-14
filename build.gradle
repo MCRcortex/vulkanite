@@ -44,6 +44,8 @@ dependencies {
     modRuntimeOnly 'org.anarres:jcpp:1.4.14'
     modRuntimeOnly 'io.github.douira:glsl-transformer:2.0.0-pre13'
 
+    modRuntimeOnly 'net.java.dev.jna:jna:5.9.0'
+
 
     implementation("com.github.FiguraMC.LuaJ:luaj-core:3.0.6-figura")
     implementation("com.github.FiguraMC.LuaJ:luaj-jse:3.0.6-figura")

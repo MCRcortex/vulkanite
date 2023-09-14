@@ -19,11 +19,9 @@ import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
-import me.cortex.vulkanite.lib.pipeline.VShader;
 import net.coderbot.iris.texture.pbr.PBRTextureHolder;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
-import net.coderbot.iris.uniforms.CommonUniforms;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.CameraSubmersionType;
@@ -33,29 +31,21 @@ import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
-import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
-import java.io.File;
 import java.nio.ByteBuffer;
-import java.nio.LongBuffer;
-import java.nio.file.Files;
 
-import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static net.coderbot.iris.uniforms.CelestialUniforms.getSunAngle;
 import static net.coderbot.iris.uniforms.CelestialUniforms.isDay;
 import static org.lwjgl.opengl.EXTSemaphore.GL_LAYOUT_GENERAL_EXT;
-import static org.lwjgl.opengl.EXTSemaphore.glSignalSemaphoreEXT;
 import static org.lwjgl.opengl.GL11C.glFinish;
 import static org.lwjgl.opengl.GL11C.glFlush;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
-import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
-import static org.lwjgl.vulkan.VK10.VK_SHADER_STAGE_ALL;
 
 public class VulkanPipeline {
     private final VContext ctx;
@@ -72,6 +62,9 @@ public class VulkanPipeline {
     private final SharedImageViewTracker blockAtlasView;
     private final SharedImageViewTracker blockAtlasNormalView;
     private final SharedImageViewTracker blockAtlasSpecularView;
+
+    private final VImage placeholderImage;
+    private final VImageView placeholderImageView;
 
     private int fidx;
 
@@ -96,6 +89,22 @@ public class VulkanPipeline {
                 PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
                 return ((IVGImage)holder.getSpecularTexture()).getVGImage();
             });
+            this.placeholderImage = ctx.memory.creatImage2D(1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            this.placeholderImageView = new VImageView(ctx, placeholderImage);
+        
+            try (var stack = stackPush()) {
+                var cmd = singleUsePool.createCommandBuffer();
+                cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+                var barriers = VkImageMemoryBarrier.calloc(1, stack);
+                applyImageBarrier(barriers.get(0), placeholderImage, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_MEMORY_READ_BIT);
+                vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, null, null, barriers);
+                cmd.end();
+
+                ctx.cmd.submit(0, VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(stack.pointers(cmd)));
+
+                Vulkanite.INSTANCE.addSyncedCallback(cmd::enqueueFree);
+            }
         }
 
         this.sampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_NEAREST)
@@ -173,7 +182,10 @@ public class VulkanPipeline {
         var out = ctx.sync.createSharedBinarySemaphore();
         VBuffer uboBuffer;
         {
-            uboBuffer = ctx.memory.createBufferGlobal(1024, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            uboBuffer = ctx.memory.createBuffer(1024,
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                    0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             long ptr = uboBuffer.map();
             MemoryUtil.memSet(ptr, 0, 1024);
             {
@@ -220,7 +232,7 @@ public class VulkanPipeline {
 
             long desc = descriptors.get(fidx);
 
-            new DescriptorUpdateBuilder(ctx, 7)
+            new DescriptorUpdateBuilder(ctx, 7, placeholderImageView)
                     .set(desc)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
@@ -299,6 +311,8 @@ public class VulkanPipeline {
         blockAtlasView.free();
         blockAtlasNormalView.free();
         blockAtlasSpecularView.free();
+        placeholderImageView.free();
+        placeholderImage.free();
         sampler.free();
     }
 

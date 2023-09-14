@@ -18,10 +18,21 @@ public class DescriptorUpdateBuilder {
     private final VContext ctx;
     private final MemoryStack stack;
     private final VkWriteDescriptorSet.Buffer updates;
+    private final VImageView placeholderImageView;
     public DescriptorUpdateBuilder(VContext ctx, int maxUpdates) {
+        this(ctx, maxUpdates, null);
+    }
+
+    public DescriptorUpdateBuilder(VContext ctx, int maxUpdates, VImageView placeholderImageView) {
         this.ctx = ctx;
         this.stack = MemoryStack.stackPush();
         this.updates = VkWriteDescriptorSet.calloc(maxUpdates, stack);
+        this.placeholderImageView = placeholderImageView;
+    }
+
+    private long viewOrPlaceholder(VImageView v) {
+        if (v == null && placeholderImageView == null) return 0;
+        return v == null ? placeholderImageView.view : v.view;
     }
 
     private long set;
@@ -99,7 +110,7 @@ public class DescriptorUpdateBuilder {
                 .pImageInfo(VkDescriptorImageInfo
                         .calloc(1, stack)
                         .imageLayout(layout)
-                        .imageView(view.view));
+                        .imageView(viewOrPlaceholder(view)));
         return this;
     }
 
@@ -117,7 +128,7 @@ public class DescriptorUpdateBuilder {
                 .pImageInfo(VkDescriptorImageInfo
                         .calloc(1, stack)
                         .imageLayout(layout)
-                        .imageView(view==null?0:view.view)
+                        .imageView(viewOrPlaceholder(view))
                         .sampler(sampler.sampler));
         return this;
     }

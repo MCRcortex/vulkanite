@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.mixin.sodium;
+package me.cortex.vulkanite.mixin.sodium.gl;
 
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVulkanContextGetter;
