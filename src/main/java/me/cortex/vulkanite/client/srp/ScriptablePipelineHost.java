@@ -2,6 +2,7 @@ package me.cortex.vulkanite.client.srp;
 
 import org.luaj.vm2.*;
 import org.luaj.vm2.compiler.LuaC;
+import org.luaj.vm2.lib.TableLib;
 import org.luaj.vm2.luajc.JavaLoader;
 
 import java.io.ByteArrayInputStream;
@@ -18,7 +19,7 @@ public class ScriptablePipelineHost {
         var proto = compile(resourceLoader.apply(path));
         //new LuaClosure(proto, new LuaTable()).call();
         //System.out.println(proto);
-        compileBytecode(proto, "me.cortex.vulkanite.client.srp.runtime.UserPipeline", new SRPEnvironment()).call();
+        compileBytecode(proto, "me.cortex.vulkanite.client.srp.runtime.UserPipeline", new LuaTable()).call();
     }
 
     private static Prototype compile(byte[] source) {
