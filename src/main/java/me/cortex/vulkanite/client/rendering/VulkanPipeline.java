@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.client.rendering;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
@@ -101,6 +102,8 @@ public class VulkanPipeline {
                 cmd.end();
 
                 ctx.cmd.submit(0, VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(stack.pointers(cmd)));
+
+                Vulkanite.INSTANCE.addSyncedCallback(cmd::enqueueFree);
             }
         }
 
