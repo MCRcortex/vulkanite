@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.mixin.sodium;
+package me.cortex.vulkanite.mixin.sodium.chunk;
 
 import me.cortex.vulkanite.compat.GeometryData;
 import me.cortex.vulkanite.compat.IAccelerationBuildResult;

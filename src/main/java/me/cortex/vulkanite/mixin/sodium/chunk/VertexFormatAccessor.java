@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.mixin.sodium;
+package me.cortex.vulkanite.mixin.sodium.chunk;
 
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildBuffers;
 import me.jellysquid.mods.sodium.client.render.chunk.vertex.format.ChunkVertexType;

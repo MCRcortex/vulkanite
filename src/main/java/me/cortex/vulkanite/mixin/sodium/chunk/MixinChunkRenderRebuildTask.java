@@ -1,6 +1,5 @@
-package me.cortex.vulkanite.mixin.sodium;
+package me.cortex.vulkanite.mixin.sodium.chunk;
 
-import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.compat.SodiumResultAdapter;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildContext;
