@@ -18,7 +18,7 @@ public class ScriptablePipelineHost {
         var proto = compile(resourceLoader.apply(path));
         //new LuaClosure(proto, new LuaTable()).call();
         //System.out.println(proto);
-        compileBytecode(proto, "me.cortex.vulkanite.client.srp.runtime.UserPipeline", new LuaScriptableEnvironment()).call();
+        compileBytecode(proto, "me.cortex.vulkanite.client.srp.runtime.UserPipeline", new SRPEnvironment()).call();
     }
 
     private static Prototype compile(byte[] source) {

@@ -2,7 +2,7 @@ package me.cortex.vulkanite.client.srp;
 
 import org.luaj.vm2.LuaValue;
 
-public class LuaScriptableEnvironment extends LuaValue {
+public class SRPEnvironment extends LuaValue {
 
     @Override
     public LuaValue get(LuaValue key) {
