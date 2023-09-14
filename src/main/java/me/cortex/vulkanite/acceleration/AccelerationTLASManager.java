@@ -348,7 +348,8 @@ public class AccelerationTLASManager {
         Map<ChunkSectionPos, Holder> tmp = new HashMap<>();
 
         public void update(AccelerationBlasBuilder.BLASBuildResult result) {
-            var holder = tmp.computeIfAbsent(result.section().getPosition(), a -> new Holder(alloc(), result.section()));
+            var data = result.data();
+            var holder = tmp.computeIfAbsent(data.section().getPosition(), a -> new Holder(alloc(), data.section()));
             if (holder.structure != null) {
                 structuresToRelease.add(holder.structure);
             }
@@ -358,7 +359,7 @@ public class AccelerationTLASManager {
                 arena.free(holder.geometryIndex, holder.geometryBuffers.size());
                 holder.geometryBuffers.forEach(buffer -> Vulkanite.INSTANCE.addSyncedCallback(buffer::free));
             }
-            holder.geometryBuffers = result.gpuVertexGeometry();
+            holder.geometryBuffers = data.geometryBuffers();
             holder.geometryIndex = arena.allocate(holder.geometryBuffers.size());
 
             for (int i = 0; i < holder.geometryBuffers.size(); i++) {
@@ -377,10 +378,6 @@ public class AccelerationTLASManager {
                                 .getTransposed(stack.mallocFloat(12)));
                 update(holder.id, asi);
             }
-        }
-
-        private void updateGeometryPointer(Holder holder) {
-
         }
 
         public void remove(RenderSection section) {

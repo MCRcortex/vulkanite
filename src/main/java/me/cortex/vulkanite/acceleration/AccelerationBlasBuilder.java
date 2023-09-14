@@ -344,14 +344,28 @@ public class AccelerationBlasBuilder {
             if (acbr == null)
                 continue;
             List<BLASTriangleData> buildData = new ArrayList<>();
+            List<VBuffer> geometryBuffers = new ArrayList<>();
             for (var entry : acbr.entrySet()) {
                 //TODO: dont hardcode the stride size
                 int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID?VK_GEOMETRY_OPAQUE_BIT_KHR:0;
                 buildData.add(new BLASTriangleData(entry.getValue().quadCount(), entry.getValue().data(), flag));
 
+                var geometry = cbr.getMesh(entry.getKey());
+                if (geometry.getVertexData().getLength() == 0) {
+                    throw new IllegalStateException();
+                }
+                var buff = context.memory.createBuffer(geometry.getVertexData().getLength(),
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                        0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                long ptr = buff.map();
+                MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.getVertexData().getDirectBuffer()), ptr, geometry.getVertexData().getLength());
+                buff.unmap();
+
+                geometryBuffers.add(buff);
             }
 
-            jobs.add(new BLASBuildJob(buildData, cbr.render, cbr.buildTime));
+            jobs.add(new BLASBuildJob(buildData, new JobPassThroughData(cbr.render, cbr.buildTime, geometryBuffers)));
         }
 
         if (jobs.isEmpty()) {
