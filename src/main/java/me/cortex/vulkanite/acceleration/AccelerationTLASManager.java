@@ -379,6 +379,10 @@ public class AccelerationTLASManager {
             }
         }
 
+        private void updateGeometryPointer(Holder holder) {
+
+        }
+
         public void remove(RenderSection section) {
             var holder = tmp.remove(section.getPosition());
             if (holder == null)

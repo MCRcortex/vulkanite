@@ -12,21 +12,22 @@
     "minecraft.MixinAbstractTexture",
     "minecraft.MixinMinecraftClient",
     "minecraft.MixinSpriteAtlasTexture",
-    "sodium.chunk.MixinChunkBuildResult",
-    "sodium.chunk.MixinChunkRenderRebuildTask",
-    "sodium.gl.MixinCommandList",
-    "sodium.gl.MixinGlBufferArena",
-    "sodium.gl.MixinGLRenderDevice",
-    "sodium.gl.MixinMutableBuffer",
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSection",
     "sodium.MixinRenderSectionManager",
-    "sodium.chunk.VertexFormatAccessor"
+    "sodium.chunk.MixinChunkBuildResult",
+    "sodium.chunk.MixinChunkRenderRebuildTask",
+    "sodium.chunk.VertexFormatAccessor",
+    "sodium.gl.MixinCommandList",
+    "sodium.gl.MixinGlBufferArena",
+    "sodium.gl.MixinGLRenderDevice",
+    "sodium.gl.MixinMutableBuffer"
   ],
   "injectors": {
     "defaultRequire": 1
   },
   "mixins": [
-    "iris.MixinPackRenderTargetDirectives"
+    "iris.MixinPackRenderTargetDirectives",
+    "sodium.PendingSectionUploadAccessor"
   ]
 }
