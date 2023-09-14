@@ -1,6 +1,5 @@
 package me.cortex.vulkanite.lib.memory;
 
-import static me.cortex.vulkanite.lib.memory.MemoryManager.closeHandle;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_GL_ERROR_;
 import static org.lwjgl.opengl.ARBDirectStateAccess.glCreateBuffers;
 import static org.lwjgl.opengl.EXTMemoryObject.glDeleteMemoryObjectsEXT;
@@ -20,7 +19,7 @@ public class VGBuffer extends VBuffer {
 
     @Override
     public void free() {
-        closeHandle(handle);
+        HandleDescriptorManger.close(handle);
         glDeleteBuffers(glId);
         glDeleteMemoryObjectsEXT(glMemObj);
         _CHECK_GL_ERROR_();

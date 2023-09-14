@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.other.sync;
 
+import me.cortex.vulkanite.lib.memory.HandleDescriptorManger;
 import me.cortex.vulkanite.lib.memory.MemoryManager;
 import org.lwjgl.vulkan.VkDevice;
 
@@ -17,7 +18,7 @@ public class VGSemaphore extends VSemaphore {
 
     @Override
     public void free() {
-        MemoryManager.closeHandle(handleDescriptor);
+        HandleDescriptorManger.close(handleDescriptor);
         glDeleteSemaphoresEXT(glSemaphore);
         super.free();
     }

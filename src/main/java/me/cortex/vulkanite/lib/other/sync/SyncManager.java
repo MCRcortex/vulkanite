@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.other.sync;
 
 import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.lib.memory.HandleDescriptorManger;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.vulkan.*;
 
@@ -70,6 +71,8 @@ public class SyncManager {
             if (pb.get(0)== 0) {
                 throw new IllegalStateException();
             }
+            HandleDescriptorManger.add(pb.get(0));
+
             int glSemaphore = glGenSemaphoresEXT();
             glImportSemaphoreWin32HandleEXT(glSemaphore, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, pb.get(0));
             if (!glIsSemaphoreEXT(glSemaphore))
@@ -104,6 +107,8 @@ public class SyncManager {
             if (fd.get(0)== 0) {
                 throw new IllegalStateException();
             }
+            HandleDescriptorManger.add(fd.get(0));
+
             int glSemaphore = glGenSemaphoresEXT();
             glImportSemaphoreFdEXT(glSemaphore, GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd.get(0));
             if (!glIsSemaphoreEXT(glSemaphore))

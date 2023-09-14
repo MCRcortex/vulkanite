@@ -60,6 +60,7 @@ public class MemoryManager {
             long handle = pb.get(0);
             if (handle == 0)
                 throw new IllegalStateException();
+            HandleDescriptorManger.add(handle);
 
             //TODO: fixme: the `alloc.ai.size() + alloc.ai.offset()` is an extreamly ugly hack
             // it is ment to extend over the entire size of vkMemoryObject, but im not sure how to obtain it
@@ -78,6 +79,7 @@ public class MemoryManager {
             int descriptor = pb.get(0);
             if (descriptor == 0)
                 throw new IllegalStateException();
+            HandleDescriptorManger.add(descriptor);
 
             //TODO: fixme: the `alloc.ai.size() + alloc.ai.offset()` is an extreamly ugly hack
             // it is ment to extend over the entire size of vkMemoryObject, but im not sure how to obtain it
@@ -87,14 +89,6 @@ public class MemoryManager {
     }
     private long importMemory(int memoryObject, VmaAllocator.Allocation allocation) {
         return Vulkanite.IS_WINDOWS?importMemoryWin32(memoryObject,allocation):importMemoryFd(memoryObject,allocation);
-    }
-
-    public static void closeHandle(long handleDescriptor) {
-        if (Vulkanite.IS_WINDOWS) {
-            Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(handleDescriptor)));
-        } else {
-            LibC.INSTANCE.close((int) handleDescriptor);
-        }
     }
 
     //TODO: there is a better way to do shared memory, a vk memory object from vma should be put into a single memory object

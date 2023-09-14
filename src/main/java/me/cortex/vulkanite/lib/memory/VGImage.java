@@ -1,6 +1,5 @@
 package me.cortex.vulkanite.lib.memory;
 
-import static me.cortex.vulkanite.lib.memory.MemoryManager.closeHandle;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_GL_ERROR_;
 import static org.lwjgl.opengl.EXTMemoryObject.glDeleteMemoryObjectsEXT;
 import static org.lwjgl.opengl.GL11C.glDeleteTextures;
@@ -20,7 +19,7 @@ public class VGImage extends VImage {
     }
 
     public void free() {
-        closeHandle(handle);
+        HandleDescriptorManger.close(handle);
       
         glDeleteTextures(glId);
         glDeleteMemoryObjectsEXT(glMemObj);
