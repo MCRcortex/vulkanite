@@ -7,11 +7,10 @@ version = project.mod_version
 group = project.maven_group
 
 repositories {
-    // Add repositories to retrieve artifacts from in here.
-    // You should only use this when depending on other mods because
-    // Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-    // See https://docs.gradle.org/current/userguide/declaring_repositories.html
-    // for more information about repositories.
+    maven { url 'https://maven.terraformersmc.com/releases/' }
+    maven { url 'https://api.modrinth.com/maven' }
+    maven { url 'https://maven.quiltmc.org/repository/release/' }
+    maven { url 'https://jitpack.io' }
 }
 
 repositories {
@@ -44,6 +43,10 @@ dependencies {
 
     modRuntimeOnly 'org.anarres:jcpp:1.4.14'
     modRuntimeOnly 'io.github.douira:glsl-transformer:2.0.0-pre13'
+
+
+    implementation("com.github.FiguraMC.LuaJ:luaj-core:3.0.6-figura")
+    implementation("com.github.FiguraMC.LuaJ:luaj-jse:3.0.6-figura")
 }
 
 processResources {
