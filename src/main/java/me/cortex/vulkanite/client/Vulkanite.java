@@ -7,8 +7,10 @@ import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import net.minecraft.util.Util;
 import org.lwjgl.vulkan.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.lwjgl.vulkan.EXTDebugUtils.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -19,12 +21,15 @@ import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_KHR_ACCELERATION_STRU
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRDeferredHostOperations.VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalFenceCapabilities.VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME;
+import static org.lwjgl.vulkan.KHRExternalFenceFd.VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalFenceWin32.VK_KHR_EXTERNAL_FENCE_WIN32_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalMemory.VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalMemoryCapabilities.VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME;
+import static org.lwjgl.vulkan.KHRExternalMemoryFd.VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalMemoryWin32.VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalSemaphore.VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalSemaphoreCapabilities.VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME;
+import static org.lwjgl.vulkan.KHRExternalSemaphoreFd.VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalSemaphoreWin32.VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRGetMemoryRequirements2.VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRGetPhysicalDeviceProperties2.VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
@@ -34,7 +39,10 @@ import static org.lwjgl.vulkan.KHRShaderDrawParameters.VK_KHR_SHADER_DRAW_PARAME
 import static org.lwjgl.vulkan.KHRSpirv14.VK_KHR_SPIRV_1_4_EXTENSION_NAME;
 
 public class Vulkanite {
+    public static final boolean IS_WINDOWS = Util.getOperatingSystem() == Util.OperatingSystem.WINDOWS;
+
     public static boolean MEMORY_LEAK_TRACING = true;
+
     public static boolean IS_ENABLED = true;
     public static final Vulkanite INSTANCE = new Vulkanite();
 
@@ -102,24 +110,31 @@ public class Vulkanite {
         //This copies whatever gpu the opengl context is on
         init.findPhysicalDevice();//glGetString(GL_RENDERER).split("/")[0]
 
-        init.createDevice(List.of(
-                        VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
-                        VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
-                        VK_KHR_EXTERNAL_FENCE_WIN32_EXTENSION_NAME,
-                        VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-                        VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
-                        VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
-                        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-                        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-                        VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
+        List<String> extensions = new ArrayList<>(List.of(
+                VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+                VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+                VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
+                VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+                VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+                VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
 
-                        //VK_KHR_RAY_QUERY_EXTENSION_NAME,
+                //VK_KHR_RAY_QUERY_EXTENSION_NAME,
 
-                        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-                        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+                VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+                VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
 
-                        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
-                ),
+                VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
+        ));
+        if (IS_WINDOWS) {
+            extensions.addAll(List.of(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
+                    VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
+                    VK_KHR_EXTERNAL_FENCE_WIN32_EXTENSION_NAME));
+        } else {
+            extensions.addAll(List.of(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME,
+                    VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME,
+                    VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME));
+        }
+        init.createDevice(extensions,
                 List.of(),
                 new float[]{1.0f, 0.9f},
                 features -> features.shaderInt16(true).shaderInt64(true).multiDrawIndirect(true), List.of(

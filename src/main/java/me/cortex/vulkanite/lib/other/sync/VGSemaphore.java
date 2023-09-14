@@ -1,19 +1,23 @@
 package me.cortex.vulkanite.lib.other.sync;
 
+import me.cortex.vulkanite.lib.memory.MemoryManager;
 import org.lwjgl.vulkan.VkDevice;
 
 import static org.lwjgl.opengl.EXTSemaphore.*;
 
 public class VGSemaphore extends VSemaphore {
     public final int glSemaphore;
+    private final long handleDescriptor;
 
-    public VGSemaphore(VkDevice device, long semaphore, int glSemaphore) {
+    public VGSemaphore(VkDevice device, long semaphore, int glSemaphore, long handleDescriptor) {
         super(device, semaphore);
         this.glSemaphore = glSemaphore;
+        this.handleDescriptor = handleDescriptor;
     }
 
     @Override
     public void free() {
+        MemoryManager.closeHandle(handleDescriptor);
         glDeleteSemaphoresEXT(glSemaphore);
         super.free();
     }

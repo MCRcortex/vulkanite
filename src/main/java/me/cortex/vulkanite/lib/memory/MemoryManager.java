@@ -1,15 +1,23 @@
 package me.cortex.vulkanite.lib.memory;
 
+import com.sun.jna.Pointer;
+import com.sun.jna.platform.linux.LibC;
+import com.sun.jna.platform.win32.Kernel32;
+import com.sun.jna.platform.win32.WinNT;
+import me.cortex.vulkanite.client.Vulkanite;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.util.vma.VmaAllocationCreateInfo;
 import org.lwjgl.vulkan.*;
 
+import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_GL_ERROR_;
 import static org.lwjgl.opengl.ARBDirectStateAccess.*;
 import static org.lwjgl.opengl.EXTMemoryObject.*;
+import static org.lwjgl.opengl.EXTMemoryObjectFD.GL_HANDLE_TYPE_OPAQUE_FD_EXT;
+import static org.lwjgl.opengl.EXTMemoryObjectFD.glImportMemoryFdEXT;
 import static org.lwjgl.opengl.EXTMemoryObjectWin32.glImportMemoryWin32HandleEXT;
 import static org.lwjgl.opengl.EXTSemaphoreWin32.GL_HANDLE_TYPE_OPAQUE_WIN32_EXT;
 import static org.lwjgl.opengl.GL11C.*;
@@ -17,11 +25,14 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.*;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.vkCreateAccelerationStructureKHR;
+import static org.lwjgl.vulkan.KHRExternalMemoryFd.vkGetMemoryFdKHR;
 import static org.lwjgl.vulkan.KHRExternalMemoryWin32.vkGetMemoryWin32HandleKHR;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 
 public class MemoryManager {
+    private static final int EXTERNAL_MEMORY_HANDLE_TYPE = Vulkanite.IS_WINDOWS?VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
     private final VkDevice device;
     private final VmaAllocator allocator;
     private final VmaAllocator.MemoryPool shared;
@@ -36,7 +47,7 @@ public class MemoryManager {
         // memory manager should never be created more than once per application, so it should bo ok
         shared = allocator.createPool(VkExportMemoryAllocateInfo.calloc()
                 .sType$Default()
-                .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT));
+                .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
     }
 
     private long importMemoryWin32(int memoryObject, VmaAllocator.Allocation allocation) {
@@ -57,6 +68,35 @@ public class MemoryManager {
         }
     }
 
+    private int importMemoryFd(int memoryObject, VmaAllocator.Allocation allocation) {
+        try (var stack = stackPush()) {
+            IntBuffer pb = stack.callocInt(1);
+            _CHECK_(vkGetMemoryFdKHR(device, VkMemoryGetFdInfoKHR.calloc(stack)
+                    .sType$Default()
+                    .memory(allocation.ai.deviceMemory())
+                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT), pb));
+            int descriptor = pb.get(0);
+            if (descriptor == 0)
+                throw new IllegalStateException();
+
+            //TODO: fixme: the `alloc.ai.size() + alloc.ai.offset()` is an extreamly ugly hack
+            // it is ment to extend over the entire size of vkMemoryObject, but im not sure how to obtain it
+            glImportMemoryFdEXT(memoryObject, allocation.ai.size() + allocation.ai.offset(), GL_HANDLE_TYPE_OPAQUE_FD_EXT, descriptor);
+            return descriptor;
+        }
+    }
+    private long importMemory(int memoryObject, VmaAllocator.Allocation allocation) {
+        return Vulkanite.IS_WINDOWS?importMemoryWin32(memoryObject,allocation):importMemoryFd(memoryObject,allocation);
+    }
+
+    public static void closeHandle(long handleDescriptor) {
+        if (Vulkanite.IS_WINDOWS) {
+            Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(handleDescriptor)));
+        } else {
+            LibC.INSTANCE.close((int) handleDescriptor);
+        }
+    }
+
     //TODO: there is a better way to do shared memory, a vk memory object from vma should be put into a single memory object
     // then the memory object should be reused multiple times, this is the corrent and more efficent way
     // that is, since `alloc.ai.deviceMemory()` is shared by multiple allocations, they can also share a single memory object
@@ -72,7 +112,7 @@ public class MemoryManager {
                             .usage(usage)
                             .pNext(VkExternalMemoryBufferCreateInfo.calloc(stack)
                                     .sType$Default()
-                                    .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT)),
+                                    .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE)),
                     // VERY IMPORTANT: create dedicated allocation so underlying memory object is only used by this buffer,
                     // thus only imported once.
                     VmaAllocationCreateInfo.calloc(stack)
@@ -82,7 +122,7 @@ public class MemoryManager {
                     alignment);
 
             int memoryObject = glCreateMemoryObjectsEXT();
-            long handle = importMemoryWin32(memoryObject, alloc);
+            long handle = importMemory(memoryObject, alloc);
 
             int glId = glCreateBuffers();
             glNamedBufferStorageMemEXT(glId, size, memoryObject, alloc.ai.offset());
@@ -99,7 +139,7 @@ public class MemoryManager {
                     .usage(usage)
                     .pNext(VkExternalMemoryImageCreateInfo.calloc(stack)
                             .sType$Default()
-                            .handleTypes(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT))
+                            .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE))
                     .format(vkFormat)
                     .imageType(VK_IMAGE_TYPE_2D)
                     .mipLevels(mipLevels)
@@ -116,7 +156,7 @@ public class MemoryManager {
                             .flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT));
 
             int memoryObject = glCreateMemoryObjectsEXT();
-            long handle = importMemoryWin32(memoryObject, alloc);
+            long handle = importMemory(memoryObject, alloc);
 
             int glId = glCreateTextures(GL_TEXTURE_2D);
 
