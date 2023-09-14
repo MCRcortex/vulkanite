@@ -27,11 +27,7 @@ public class VGBuffer extends VBuffer {
 
     @Override
     public void free() {
-        glFinish();
-        Vulkanite.INSTANCE.getCtx().cmd.waitQueueIdle(0);
-        
         Kernel32.INSTANCE.CloseHandle(this.handle);
-
         glDeleteBuffers(glId);
         glDeleteMemoryObjectsEXT(glMemObj);
         _CHECK_GL_ERROR_();
