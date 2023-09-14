@@ -16,18 +16,22 @@ public class HandleDescriptorManger {
     }
 
     public static void close(long handleDescriptor) {
-        boolean shouldClose = false;
         synchronized (USED_HANDLE_DESCRIPTORS) {
-            shouldClose = USED_HANDLE_DESCRIPTORS.addTo(handleDescriptor, -1) == 1;
-        }
-        if (shouldClose) {
-            synchronized (USED_HANDLE_DESCRIPTORS) {
-                USED_HANDLE_DESCRIPTORS.remove(handleDescriptor);
+            int val = USED_HANDLE_DESCRIPTORS.addTo(handleDescriptor, -1);
+            if (val <= 0) {
+                throw new IllegalStateException();
             }
-            if (Vulkanite.IS_WINDOWS) {
-                Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(handleDescriptor)));
-            } else {
-                LibC.INSTANCE.close((int) handleDescriptor);
+            if (val == 1) {
+                USED_HANDLE_DESCRIPTORS.remove(handleDescriptor);
+                if (Vulkanite.IS_WINDOWS) {
+                    if (!Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(handleDescriptor)))) {
+                        throw new IllegalStateException();
+                    }
+                } else {
+                    if (LibC.INSTANCE.close((int) handleDescriptor) != 0) {
+                        throw new IllegalStateException();
+                    }
+                }
             }
         }
     }

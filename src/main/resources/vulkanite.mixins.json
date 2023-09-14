@@ -8,6 +8,8 @@
     "iris.MixinPBRAtlasTexture",
     "iris.MixinProgramSet",
     "iris.MixinRenderTarget",
+    "iris.MixinPackRenderTargetDirectives",
+    "iris.MixinStandardMacros",
     "iris.MixinShaderPackSourceNames",
     "minecraft.MixinAbstractTexture",
     "minecraft.MixinMinecraftClient",
@@ -21,13 +23,10 @@
     "sodium.gl.MixinCommandList",
     "sodium.gl.MixinGlBufferArena",
     "sodium.gl.MixinGLRenderDevice",
-    "sodium.gl.MixinMutableBuffer"
+    "sodium.gl.MixinMutableBuffer",
+    "sodium.PendingSectionUploadAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "mixins": [
-    "iris.MixinPackRenderTargetDirectives",
-    "sodium.PendingSectionUploadAccessor"
-  ]
+  }
 }
