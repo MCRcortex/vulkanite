@@ -104,10 +104,7 @@ public class AccelerationTLASManager {
             //Build the entities here cause it means that we can check if the result is null or not, can also just pass in the fence and cmd buffer
             var res = entityRenderer.render(0.001f, context, cmd, fence);
 
-            int buildGeometryCount = res == null?1:1;
 
-            VkAccelerationStructureGeometryKHR.Buffer geometries = VkAccelerationStructureGeometryKHR.calloc(buildGeometryCount, stack);
-            int[] instanceCounts = new int[buildGeometryCount];
 
 
 
@@ -186,14 +183,31 @@ public class AccelerationTLASManager {
                 }
             }
 
+            VkAccelerationStructureGeometryKHR geometry = VkAccelerationStructureGeometryKHR.calloc(stack);
+            int[] instanceCounts = new int[1];
+            {
+                geometry.sType$Default()
+                        .geometryType(VK_GEOMETRY_TYPE_INSTANCES_KHR)
+                        .flags(0);
+
+                geometry.geometry()
+                        .instances()
+                        .sType$Default()
+                        .arrayOfPointers(false);
+
+                geometry.geometry()
+                        .instances()
+                        .data()
+                        .deviceAddress(data.deviceAddress());
+            }
 
 
             var buildInfo = VkAccelerationStructureBuildGeometryInfoKHR.calloc(1, stack)
                     .sType$Default()
                     .mode(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)//TODO: explore using VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR to speedup build times
                     .type(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
-                    .pGeometries(geometries)
-                    .geometryCount(geometries.capacity());
+                    .pGeometries(VkAccelerationStructureGeometryKHR.create(geometry.address(), 1))
+                    .geometryCount(1);
 
             VkAccelerationStructureBuildSizesInfoKHR buildSizesInfo = VkAccelerationStructureBuildSizesInfoKHR
                     .calloc(stack)
@@ -310,19 +324,6 @@ public class AccelerationTLASManager {
                 data.free();
             });
 
-            struct.sType$Default()
-                    .geometryType(VK_GEOMETRY_TYPE_INSTANCES_KHR)
-                    .flags(0);
-
-            struct.geometry()
-                    .instances()
-                    .sType$Default()
-                    .arrayOfPointers(false);
-
-            struct.geometry()
-                    .instances()
-                    .data()
-                    .deviceAddress(data.deviceAddress());
         }
 
         public int sectionCount() {
