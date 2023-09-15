@@ -65,7 +65,7 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
     private void setupTextures(int width, int height, boolean allowsLinear) {
         var ctx = Vulkanite.INSTANCE.getCtx();
         int glfmt = internalFormat.getGlFormat();
-        glfmt = (glfmt==GL_RGBA)?GL_RGBA32F:glfmt;
+        glfmt = (glfmt==GL_RGBA)?GL_RGBA8:glfmt;
         int vkfmt = gl2vkFormat(glfmt);
         vgMainTexture = ctx.memory.createSharedImage(width, height, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         setupTexture(getMainTexture(), width, height, allowsLinear);
