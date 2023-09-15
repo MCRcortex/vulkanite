@@ -107,7 +107,6 @@ public class AccelerationBlasBuilder {
                 LongBuffer pAccelerationStructures = stack.mallocLong(jobs.size());
 
                 List<VBuffer> buffersToFree = new ArrayList<>(jobs.size() * 2);
-                List<VBuffer> buildBuffers = new ArrayList<>(jobs.size());
                 var scratchBuffers = new VBuffer[jobs.size()];
                 var accelerationStructures = new VAccelerationStructure[jobs.size()];
 
@@ -140,17 +139,25 @@ public class AccelerationBlasBuilder {
                         hostGeometryBuffers.add(buf);
                         geometrySizes.add(geometry.geometry.getLength());
 
+                        if (geometry.geometry.getLength() <= 0) {
+                            throw new IllegalStateException("Geometry size <= 0");
+                        }
+
                         buildBufferSize += geometry.geometry.getLength();
                         //After we copy it over, we can free the native buffer
                         geometry.geometry.free();
                     }
 
+                    if (buildBufferSize <= 0) {
+                        throw new IllegalStateException("Build buffer size <= 0");
+                    }
+
                     var buildBuffer = context.memory.createBuffer(buildBufferSize,
-                                VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                                        | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-                                        | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                0, 0);
+                            VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                                    | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                            0, 0);
                     buffersToFree.add(buildBuffer);
                     var buildBufferAddr = buildBuffer.deviceAddress();
                     long buildBufferOffset = 0;
@@ -392,7 +399,9 @@ public class AccelerationBlasBuilder {
                 geometryBuffers.add(buff);
             }
 
-            jobs.add(new BLASBuildJob(buildData, new JobPassThroughData(cbr.render, cbr.buildTime, geometryBuffers)));
+            if (buildData.size() > 0) {
+                jobs.add(new BLASBuildJob(buildData, new JobPassThroughData(cbr.render, cbr.buildTime, geometryBuffers)));
+            }
         }
 
         if (jobs.isEmpty()) {
