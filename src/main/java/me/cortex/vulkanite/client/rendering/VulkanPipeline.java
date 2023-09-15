@@ -162,7 +162,11 @@ public class VulkanPipeline {
     private VSemaphore previousSemaphore;
 
     private int frameId;
+
+    private final EntityRenderer entityRenderer = new EntityRenderer();
+
     public void renderPostShadows(VGImage outImg, Camera camera) {
+        entityRenderer.render(0);
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
 
