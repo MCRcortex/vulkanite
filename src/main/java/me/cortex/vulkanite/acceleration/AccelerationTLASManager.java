@@ -104,7 +104,7 @@ public class AccelerationTLASManager {
             //Build the entities here cause it means that we can check if the result is null or not, can also just pass in the fence and cmd buffer
             var res = entityRenderer.render(0.001f, context, cmd, fence);
 
-            int buildGeometryCount = res == null?1:2;
+            int buildGeometryCount = res == null?1:1;
 
             VkAccelerationStructureGeometryKHR.Buffer geometries = VkAccelerationStructureGeometryKHR.calloc(buildGeometryCount, stack);
             int[] instanceCounts = new int[buildGeometryCount];
@@ -136,12 +136,13 @@ public class AccelerationTLASManager {
             }
 
             {
-                var struct = geometries.get(1);
                 if (res != null) {
+                    var struct = geometries.get(0);
                     var asi = VkAccelerationStructureInstanceKHR.calloc(stack)
                             .mask(~0)
                             .instanceCustomIndex(0)
-                            .accelerationStructureReference(res.getLeft().structure);
+                            .instanceShaderBindingTableRecordOffset(1)
+                            .accelerationStructureReference(res.getLeft().deviceAddress);
                     asi.transform()
                             .matrix(new Matrix4x3f()
                                     .translate(0,0,0)
@@ -178,8 +179,11 @@ public class AccelerationTLASManager {
                             .instances()
                             .data()
                             .deviceAddress(data.deviceAddress());
+
+
+
+                    instanceCounts[0] = 1;
                 }
-                instanceCounts[1] = 1;
             }
 
 

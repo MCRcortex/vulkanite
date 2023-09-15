@@ -84,6 +84,9 @@ public class EntityRenderer {
             builderMap.forEach((layer,buffer)->{
                 if (buffer.isBuilding()) {
                     var builtBuffer = buffer.end();
+                    if (builtBuffer.getParameters().getBufferSize() == 0) {
+                        return;//Dont add empty buffers
+                    }
                     //TODO: Doesnt support terrian vertex format yet, requires a second blas so that the instance offset can be the same
                     // as terrain instance offset
                     if (builtBuffer.getParameters().format().equals(IrisVertexFormats.TERRAIN)) {
@@ -123,7 +126,7 @@ public class EntityRenderer {
         //Each render layer gets its own geometry entry in the blas
 
         //TODO: PUT THE BINDLESS TEXTURE REFERENCE AT THE START OF THE render layers geometry buffer
-        var geometryBuffer = ctx.memory.createBuffer(combined_size, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, 0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        var geometryBuffer = ctx.memory.createBuffer(combined_size, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, 0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
         long ptr = geometryBuffer.map();
         long offset = 0;
         List<BuildInfo> infos = new ArrayList<>();
@@ -135,9 +138,9 @@ public class EntityRenderer {
         }
         geometryBuffer.unmap();
 
-        VAccelerationStructure blas;
+        VAccelerationStructure blas = null;
         try (var stack = MemoryStack.stackPush()) {
-            IntBuffer primitiveCounts = stack.callocInt(infos.size());
+            int[] primitiveCounts = new int[infos.size()];
             var buildInfo = populateBuildStructs(ctx, stack, infos, primitiveCounts);
 
             blas = executeBlasBuild(ctx, cmd, fence, stack, buildInfo, primitiveCounts);
@@ -147,8 +150,9 @@ public class EntityRenderer {
         return new Pair<>(blas, geometryBuffer);
     }
 
-    private VkAccelerationStructureGeometryKHR.Buffer populateBuildStructs(VContext ctx, MemoryStack stack, List<BuildInfo> geometries, IntBuffer primitiveCounts) {
+    private VkAccelerationStructureGeometryKHR.Buffer populateBuildStructs(VContext ctx, MemoryStack stack, List<BuildInfo> geometries, int[] primitiveCounts) {
         var geometryInfos = VkAccelerationStructureGeometryKHR.calloc(geometries.size(), stack);
+        int i = 0;
         for (var geometry : geometries) {
             VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(ctx, geometry.quadCount);
             int indexType = SharedQuadVkIndexBuffer.TYPE;
@@ -158,6 +162,7 @@ public class EntityRenderer {
             int vertexStride = geometry.format.getVertexSizeByte();
 
             geometryInfos.get()
+                    .sType$Default()
                     .geometry(VkAccelerationStructureGeometryDataKHR.calloc(stack)
                             .triangles(VkAccelerationStructureGeometryTrianglesDataKHR.calloc(stack)
                                     .sType$Default()
@@ -172,15 +177,18 @@ public class EntityRenderer {
                     .geometryType(VK_GEOMETRY_TYPE_TRIANGLES_KHR)
             //        .flags(geometry.geometryFlags)
             ;
-            primitiveCounts.put(geometry.quadCount * 2);
+            primitiveCounts[i++] = (geometry.quadCount * 2);
         }
-        primitiveCounts.rewind();
+        geometryInfos.rewind();
         return geometryInfos;
     }
 
-    private static VAccelerationStructure executeBlasBuild(VContext ctx, VCmdBuff cmd, VFence cleanupFence, MemoryStack stack, VkAccelerationStructureGeometryKHR.Buffer geometryInfos, IntBuffer maxPrims) {
+    private static VAccelerationStructure executeBlasBuild(VContext ctx, VCmdBuff cmd, VFence cleanupFence, MemoryStack stack, VkAccelerationStructureGeometryKHR.Buffer geometryInfos, int[] prims) {
         var buildInfos = VkAccelerationStructureBuildGeometryInfoKHR.calloc(1, stack);
-        PointerBuffer buildRanges = stack.mallocPointer(1);
+        var buildRanges = VkAccelerationStructureBuildRangeInfoKHR.calloc(prims.length, stack);
+        for (int primCount : prims) {
+            buildRanges.get().primitiveCount(primCount);
+        }
 
         var bi = buildInfos.get()
                 .sType$Default()
@@ -197,7 +205,7 @@ public class EntityRenderer {
                 ctx.device,
                 VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
                 bi,
-                maxPrims,
+                prims,
                 buildSizesInfo);
 
 
@@ -214,7 +222,12 @@ public class EntityRenderer {
         buildInfos.rewind();
         buildRanges.rewind();
 
-        vkCmdBuildAccelerationStructuresKHR(cmd.buffer, buildInfos, buildRanges);
+        vkCmdBuildAccelerationStructuresKHR(cmd.buffer, buildInfos, stack.pointers(buildRanges));
+
+        vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1)
+                .sType$Default()
+                .srcAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)
+                .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR), null, null);
 
         ctx.sync.addCallback(cleanupFence, scratch::free);
         return structure;
