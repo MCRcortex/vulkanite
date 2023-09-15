@@ -112,7 +112,6 @@ public class AccelerationBlasBuilder {
                 LongBuffer pAccelerationStructures = stack.mallocLong(jobs.size());
 
                 List<VBuffer> buffersToFree = new ArrayList<>(jobs.size() * 2);
-                List<VBuffer> buildBuffers = new ArrayList<>(jobs.size());
                 var scratchBuffers = new VBuffer[jobs.size()];
                 var accelerationStructures = new VAccelerationStructure[jobs.size()];
 

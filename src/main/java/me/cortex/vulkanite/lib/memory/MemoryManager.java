@@ -112,7 +112,7 @@ public class MemoryManager {
                     VmaAllocationCreateInfo.calloc(stack)
                             .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(properties)
-                            .flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT),
+                    ,//.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT)
                     alignment);
 
             int memoryObject = glCreateMemoryObjectsEXT();
@@ -147,7 +147,8 @@ public class MemoryManager {
                     VmaAllocationCreateInfo.calloc(stack)
                             .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(properties)
-                            .flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT));
+                            //.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT)
+            );
 
             int memoryObject = glCreateMemoryObjectsEXT();
             long handle = importMemory(memoryObject, alloc);

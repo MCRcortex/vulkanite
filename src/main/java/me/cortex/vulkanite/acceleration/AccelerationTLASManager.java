@@ -4,6 +4,7 @@ package me.cortex.vulkanite.acceleration;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.client.rendering.EntityRenderer;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
@@ -58,6 +59,10 @@ public class AccelerationTLASManager {
     }
 
 
+    //THIS IS TEMPORARILY GOING HERE, TODO: FIXME
+    private final EntityRenderer entityRenderer = new EntityRenderer();
+
+
     //TODO: cleanup, this is very messy
     //FIXME: in the case of no geometry create an empty tlas or something???
     public void buildTLAS(VSemaphore semIn, VSemaphore semOut, VSemaphore[] blocking) {
@@ -89,14 +94,23 @@ public class AccelerationTLASManager {
 
 
             //The reason its done like this is so that entities and stuff can be easily added to the tlas manager
-            VkAccelerationStructureGeometryKHR.Buffer geometries = VkAccelerationStructureGeometryKHR.calloc(1, stack);
-            int[] instanceCounts = new int[1];
 
-            VFence fence = context.sync.createFence();
 
 
             var cmd = singleUsePool.createCommandBuffer();
             cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT );
+            VFence fence = context.sync.createFence();
+
+            //Build the entities here cause it means that we can check if the result is null or not, can also just pass in the fence and cmd buffer
+            var res = entityRenderer.render(0.001f, context, cmd, fence);
+
+            int buildGeometryCount = res == null?1:2;
+
+            VkAccelerationStructureGeometryKHR.Buffer geometries = VkAccelerationStructureGeometryKHR.calloc(buildGeometryCount, stack);
+            int[] instanceCounts = new int[buildGeometryCount];
+
+
+
 
             {
                 //TODO: need to sync with respect to updates from gpu memory updates from TLASBuildDataManager
@@ -119,6 +133,53 @@ public class AccelerationTLASManager {
                                 .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT)
                                 .dstAccessMask(VK_ACCESS_SHADER_READ_BIT),
                         null, null);
+            }
+
+            {
+                var struct = geometries.get(1);
+                if (res != null) {
+                    var asi = VkAccelerationStructureInstanceKHR.calloc(stack)
+                            .mask(~0)
+                            .instanceCustomIndex(0)
+                            .accelerationStructureReference(res.getLeft().structure);
+                    asi.transform()
+                            .matrix(new Matrix4x3f()
+                                    .translate(0,0,0)
+                                    .getTransposed(stack.mallocFloat(12)));
+
+                    VBuffer data = context.memory.createBuffer(VkAccelerationStructureInstanceKHR.SIZEOF,
+                            VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                                    | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                            VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                            0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                    long ptr = data.map();
+                    MemoryUtil.memCopy(asi.address(), ptr, VkAccelerationStructureInstanceKHR.SIZEOF);
+                    data.unmap();
+                    data.flush();
+
+                    context.sync.addCallback(fence, () -> {
+                        data.free();
+                        res.getRight().free();
+                        res.getLeft().free();
+                    });
+
+
+                    struct.sType$Default()
+                            .geometryType(VK_GEOMETRY_TYPE_INSTANCES_KHR)
+                            .flags(0);
+
+                    struct.geometry()
+                            .instances()
+                            .sType$Default()
+                            .arrayOfPointers(false);
+
+                    struct.geometry()
+                            .instances()
+                            .data()
+                            .deviceAddress(data.deviceAddress());
+                }
+                instanceCounts[1] = 1;
             }
 
 

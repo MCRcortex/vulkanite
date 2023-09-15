@@ -13,6 +13,7 @@
     "iris.MixinStandardMacros",
     "minecraft.MixinAbstractTexture",
     "minecraft.MixinMinecraftClient",
+    "minecraft.MixinResourceTexture",
     "minecraft.MixinSpriteAtlasTexture",
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSection",

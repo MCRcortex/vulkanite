@@ -103,7 +103,7 @@ public class VUtil {
         return (size + alignment - 1) & -alignment;
     }
 
-    public static long alignUp(long size, long alignment) {
-        return (size + alignment - 1) & -alignment;
+    public static long alignUp(long value, long alignment) {
+        return (value + alignment - 1) & -alignment;
     }
 }
