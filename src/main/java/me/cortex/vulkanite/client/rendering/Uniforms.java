@@ -60,6 +60,6 @@ public class Uniforms {
     }
 
     private static float getSkyAngle() {
-        return getWorld().getSkyAngleRadians(CapturedRenderingState.INSTANCE.getTickDelta());
+        return getWorld().getSkyAngle(CapturedRenderingState.INSTANCE.getTickDelta());
     }
 }
