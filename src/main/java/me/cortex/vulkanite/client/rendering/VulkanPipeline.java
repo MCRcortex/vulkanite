@@ -213,8 +213,6 @@ public class VulkanPipeline {
 
                 bb.putInt(Float.BYTES * 40, frameId++);
 
-                System.out.println(frameId);
-
                 int flags = Uniforms.isEyeInWater()&3;
                 bb.putInt(Float.BYTES * 41, flags);
                 bb.rewind();
