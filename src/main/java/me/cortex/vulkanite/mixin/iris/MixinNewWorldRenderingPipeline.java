@@ -3,10 +3,14 @@ package me.cortex.vulkanite.mixin.iris;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.compat.IGetRaytracingSource;
+import me.cortex.vulkanite.compat.IGlTextureVkGetter;
 import me.cortex.vulkanite.compat.IRenderTargetVkGetter;
 import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.memory.VGImage;
+import net.coderbot.iris.gl.texture.GlTexture;
 import net.coderbot.iris.mixin.LevelRendererAccessor;
+import net.coderbot.iris.pipeline.CustomTextureManager;
 import net.coderbot.iris.pipeline.newshader.NewWorldRenderingPipeline;
 import net.coderbot.iris.rendertarget.RenderTargets;
 import net.coderbot.iris.shaderpack.ProgramSet;
@@ -22,6 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = NewWorldRenderingPipeline.class, remap = false)
 public class MixinNewWorldRenderingPipeline {
     @Shadow @Final private RenderTargets renderTargets;
+    @Shadow @Final private CustomTextureManager customTextureManager;
     @Unique private RaytracingShaderSet[] rtShaderPasses = null;
     @Unique private VContext ctx;
     @Unique private VulkanPipeline pipeline;
@@ -42,7 +47,15 @@ public class MixinNewWorldRenderingPipeline {
 
     @Inject(method = "renderShadows", at = @At("TAIL"))
     private void renderShadows(LevelRendererAccessor par1, Camera par2, CallbackInfo ci) {
-        pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.get(0)).getMain(), par2);
+        GlTexture customTexture = (GlTexture) customTextureManager.getIrisCustomTextures().get("customtex0");
+
+        VGImage image = null;
+
+        if(customTexture != null) {
+            image = ((IGlTextureVkGetter)(Object)customTexture).getImage();
+        }
+
+        pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.get(0)).getMain(), image, par2);
     }
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))

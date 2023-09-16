@@ -19,11 +19,18 @@ public class VImageView extends TrackedResourceObject {
         this.ctx = ctx;
         this.image = image;
 
+        int imageViewType = switch (image.dimensions) {
+            case 1 -> VK_IMAGE_VIEW_TYPE_1D;
+            case 2 -> VK_IMAGE_VIEW_TYPE_2D;
+            case 3 -> VK_IMAGE_VIEW_TYPE_3D;
+            default -> -1;
+        };
+
         try (var stack = stackPush()) {
             LongBuffer view = stack.callocLong(1);
             var vci = VkImageViewCreateInfo.calloc(stack)
                     .sType$Default()
-                    .viewType(VK_IMAGE_VIEW_TYPE_2D)
+                    .viewType(imageViewType)
                     .format(image.format)
                     .image(image.image());
             vci.subresourceRange()

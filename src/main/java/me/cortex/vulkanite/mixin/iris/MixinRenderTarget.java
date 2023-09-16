@@ -3,6 +3,7 @@ package me.cortex.vulkanite.mixin.iris;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IRenderTargetVkGetter;
 import me.cortex.vulkanite.lib.memory.VGImage;
+import me.cortex.vulkanite.lib.other.FormatConverter;
 import net.coderbot.iris.gl.texture.InternalTextureFormat;
 import net.coderbot.iris.gl.texture.PixelFormat;
 import net.coderbot.iris.rendertarget.RenderTarget;
@@ -64,26 +65,17 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
 
     private void setupTextures(int width, int height, boolean allowsLinear) {
         var ctx = Vulkanite.INSTANCE.getCtx();
+
         int glfmt = internalFormat.getGlFormat();
-        glfmt = (glfmt==GL_RGBA)?GL_RGBA8:glfmt;
-        int vkfmt = gl2vkFormat(glfmt);
-        vgMainTexture = ctx.memory.createSharedImage(width, height, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        glfmt = (glfmt == GL_RGBA) ? GL_RGBA8 : glfmt;
+
+        int vkfmt = FormatConverter.getVkFormatFromGl(internalFormat);
+
+        vgMainTexture = ctx.memory.createSharedImage(width, height, 1, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         setupTexture(getMainTexture(), width, height, allowsLinear);
 
-        vgAltTexture = ctx.memory.createSharedImage(width, height, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vgAltTexture = ctx.memory.createSharedImage(width, height, 1, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         setupTexture(getAltTexture(), width, height, allowsLinear);
-    }
-
-
-    private int gl2vkFormat(int gl) {
-        return switch (gl) {
-            case GL_R11F_G11F_B10F -> VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-            case GL_RGBA16 -> VK_FORMAT_R16G16B16A16_UNORM;
-            case GL_RGB32F, GL_RGBA32F -> VK_FORMAT_R32G32B32A32_SFLOAT;
-            case GL_RGB8, GL_RGBA8 -> VK_FORMAT_R8G8B8A8_UNORM;
-            case GL_R16F -> VK_FORMAT_R16_SFLOAT;
-            default -> {throw new IllegalArgumentException("Unknown gl2vk type: "+internalFormat+" -> "+internalFormat.getGlFormat());}
-        };
     }
 
     @Redirect(method = "destroy", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/GlStateManager;_deleteTextures([I)V"))
