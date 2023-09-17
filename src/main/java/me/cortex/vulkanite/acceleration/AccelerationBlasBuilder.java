@@ -8,6 +8,7 @@ import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
+import me.cortex.vulkanite.lib.memory.MemoryManager;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VQueryPool;
@@ -15,6 +16,7 @@ import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
@@ -30,6 +32,9 @@ import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
+import static org.lwjgl.opengl.ARBDirectStateAccess.*;
+import static org.lwjgl.opengl.GL15.*;
+import static org.lwjgl.opengl.GL45.nglNamedBufferData;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
@@ -370,6 +375,21 @@ public class AccelerationBlasBuilder {
         }
     }
 
+
+
+    private VBuffer uploadTerrainGeometry(BuiltSectionMeshParts meshParts) {
+        var buff = context.memory.createSharedBuffer(meshParts.getVertexData().getLength(),
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+        int glHolder = glCreateBuffers();
+        nglNamedBufferData(glHolder, meshParts.getVertexData().getLength(), MemoryUtil.memAddress(meshParts.getVertexData().getDirectBuffer()), GL_STREAM_COPY);
+        glCopyNamedBufferSubData(glHolder, buff.glId, 0, 0, meshParts.getVertexData().getLength());
+        glDeleteBuffers(glHolder);
+
+        return buff;
+    }
+
     //Enqueues jobs of section blas builds
     public void enqueue(List<ChunkBuildOutput> batch) {
         List<BLASBuildJob> jobs = new ArrayList<>(batch.size());
@@ -388,15 +408,7 @@ public class AccelerationBlasBuilder {
                 if (geometry.getVertexData().getLength() == 0) {
                     throw new IllegalStateException();
                 }
-                var buff = context.memory.createBuffer(geometry.getVertexData().getLength(),
-                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                        0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-                long ptr = buff.map();
-                MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.getVertexData().getDirectBuffer()), ptr, geometry.getVertexData().getLength());
-                buff.unmap();
-
-                geometryBuffers.add(buff);
+                geometryBuffers.add(uploadTerrainGeometry(geometry));
             }
 
             if (buildData.size() > 0) {

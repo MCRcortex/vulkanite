@@ -22,6 +22,7 @@ import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
 import net.coderbot.iris.texture.pbr.PBRTextureHolder;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
+import net.coderbot.iris.uniforms.CelestialUniforms;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.CameraSubmersionType;
@@ -204,28 +205,13 @@ public class VulkanPipeline {
                 invProjMatrix.transformProject(+1, +1, 0, 1, tmpv3).get(12*Float.BYTES, bb);
                 invViewMatrix.get(Float.BYTES * 16, bb);
 
-                Vector4f position = new Vector4f(0.0F, isDay() ? 100 : -100, 0.0F, 0.0F);
+                Uniforms.getSunPosition().get(Float.BYTES * 32, bb);
+                Uniforms.getMoonPosition().get(Float.BYTES * 36, bb);
 
-                // TODO: Deduplicate / remove this function.
-                Matrix4f celestial = new Matrix4f();
-                celestial.identity();
+                bb.putInt(Float.BYTES * 40, frameId++);
 
-                // This is the same transformation applied by renderSky, however, it's been moved to here.
-                // This is because we need the result of it before it's actually performed in vanilla.
-                celestial.rotate(RotationAxis.POSITIVE_Y.rotationDegrees(-90.0F));
-                celestial.rotate(RotationAxis.POSITIVE_X.rotationDegrees(getSunAngle() * 360.0F));
-
-                celestial.transform(position);
-
-
-                Vector3f vec3 = new Vector3f(position.x(), position.y(), position.z());
-                vec3.normalize();
-                vec3.get(Float.BYTES * 32, bb);
-
-                bb.putInt(Float.BYTES * 35, frameId++);
-
-                int flags = isEyeInWater()&3;
-                bb.putInt(Float.BYTES * 36, flags);
+                int flags = Uniforms.isEyeInWater()&3;
+                bb.putInt(Float.BYTES * 41, flags);
             }
             uboBuffer.unmap();
             uboBuffer.flush();
@@ -317,16 +303,4 @@ public class VulkanPipeline {
     }
 
 
-
-    //Copied from CommonUniforms
-    static int isEyeInWater() {
-        CameraSubmersionType var0 = MinecraftClient.getInstance().gameRenderer.getCamera().getSubmersionType();
-        if (var0 == CameraSubmersionType.WATER) {
-            return 1;
-        } else if (var0 == CameraSubmersionType.LAVA) {
-            return 2;
-        } else {
-            return var0 == CameraSubmersionType.POWDER_SNOW ? 3 : 0;
-        }
-    }
 }

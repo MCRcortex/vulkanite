@@ -14,6 +14,6 @@ import java.util.ArrayList;
 public class MixinStandardMacros {
     @Inject(method = "createStandardEnvironmentDefines", at = @At(value = "INVOKE", target = "Lnet/coderbot/iris/gl/shader/StandardMacros;define(Ljava/util/List;Ljava/lang/String;)V", ordinal = 0), locals = LocalCapture.CAPTURE_FAILHARD)
     private static void injectVulkaniteDefine(CallbackInfoReturnable<Iterable<StringPair>> cir, ArrayList<StringPair> defines) {
-        defines.add(new StringPair("VULKANITE", ""));
+        defines.add(new StringPair("VULKANITE", " "));
     }
 }
