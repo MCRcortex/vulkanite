@@ -26,17 +26,6 @@ import static org.lwjgl.vulkan.VK10.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 @Mixin(value = NativeImageBackedTexture.class, remap = false)
 public abstract class MixinNativeImageBackedTexture extends AbstractTexture implements IVGImage {
-
-    @Shadow @Nullable private NativeImage image;
-
-    @Redirect(method = "<init>(Lnet/minecraft/client/texture/NativeImage;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImageBackedTexture;getGlId()I"))
-    private int redirectGetId(NativeImageBackedTexture instance){
-        if(!((Object) this instanceof NativeImageBackedCustomTexture)) {
-            return instance.getGlId();
-        }
-        return -1;
-    }
-
     @Redirect(method = "<init>(Lnet/minecraft/client/texture/NativeImage;)V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/TextureUtil;prepareImage(III)V"))
     private void redirectGen(int id, int width, int height) {
         if(!((Object) this instanceof NativeImageBackedCustomTexture)) {
@@ -44,8 +33,10 @@ public abstract class MixinNativeImageBackedTexture extends AbstractTexture impl
             return;
         }
 
-        RenderSystem.assertOnRenderThreadOrInit();
-
+        if (glId != -1) {
+            glDeleteTextures(glId);
+            glId = -1;
+        }
         if (getVGImage() != null) {
             System.err.println("Vulkan image already allocated, releasing");
             Vulkanite.INSTANCE.addSyncedCallback(getVGImage()::free);
