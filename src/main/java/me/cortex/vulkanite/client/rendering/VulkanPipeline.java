@@ -58,6 +58,7 @@ public class VulkanPipeline {
     private VDescriptorPool descriptors;
 
     private final VSampler sampler;
+    private final VSampler ctexSampler;
 
     private final SharedImageViewTracker composite0mainView;
     private final SharedImageViewTracker customTextureView;
@@ -94,7 +95,7 @@ public class VulkanPipeline {
             });
             this.placeholderImage = ctx.memory.createImage2D(1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             this.placeholderImageView = new VImageView(ctx, placeholderImage);
-        
+
             try (var stack = stackPush()) {
                 var cmd = singleUsePool.createCommandBuffer();
                 cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
@@ -112,6 +113,17 @@ public class VulkanPipeline {
 
         this.sampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_NEAREST)
                 .minFilter(VK_FILTER_NEAREST)
+                .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
+                .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                .addressModeV(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                .addressModeW(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                .compareOp(VK_COMPARE_OP_NEVER)
+                .maxLod(1)
+                .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
+                .maxAnisotropy(1.0f));
+
+        this.ctexSampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_LINEAR)
+                .minFilter(VK_FILTER_LINEAR)
                 .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
                 .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
                 .addressModeV(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
@@ -231,7 +243,7 @@ public class VulkanPipeline {
                     .imageSampler(4, blockAtlasView.getView(), sampler)
                     .imageSampler(5, blockAtlasNormalView.getView(), sampler)
                     .imageSampler(6, blockAtlasSpecularView.getView(), sampler)
-                    .imageSampler(7, customTextureView.getView(()->customTexture), sampler)
+                    .imageSampler(7, customTextureView.getView(()->customTexture), ctexSampler)
                     .apply();
 
 
@@ -308,6 +320,7 @@ public class VulkanPipeline {
         placeholderImageView.free();
         placeholderImage.free();
         sampler.free();
+        ctexSampler.free();
     }
 
 
