@@ -2,7 +2,7 @@ package me.cortex.vulkanite.mixin.iris;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import me.cortex.vulkanite.client.Vulkanite;
-import me.cortex.vulkanite.compat.IGlTextureVkGetter;
+import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.other.FormatConverter;
 import net.coderbot.iris.gl.IrisRenderSystem;
@@ -21,7 +21,7 @@ import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.vulkan.VK10.*;
 
 @Mixin(value = GlTexture.class, remap = false)
-public abstract class MixinGlTexture extends MixinGlResource implements IGlTextureVkGetter {
+public abstract class MixinGlTexture extends MixinGlResource implements IVGImage {
     @Unique private VGImage sharedImage;
 
     @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/GlStateManager;_genTexture()I"))
@@ -89,7 +89,7 @@ public abstract class MixinGlTexture extends MixinGlResource implements IGlTextu
         sharedImage.free();
     }
 
-    public VGImage getImage() {
+    public VGImage getVGImage() {
         return sharedImage;
     }
 }

@@ -3,18 +3,20 @@ package me.cortex.vulkanite.mixin.iris;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.compat.IGetRaytracingSource;
-import me.cortex.vulkanite.compat.IGlTextureVkGetter;
 import me.cortex.vulkanite.compat.IRenderTargetVkGetter;
+import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.memory.VGImage;
-import net.coderbot.iris.gl.texture.GlTexture;
+import net.coderbot.iris.gl.texture.TextureAccess;
 import net.coderbot.iris.mixin.LevelRendererAccessor;
 import net.coderbot.iris.pipeline.CustomTextureManager;
 import net.coderbot.iris.pipeline.newshader.NewWorldRenderingPipeline;
 import net.coderbot.iris.rendertarget.RenderTargets;
 import net.coderbot.iris.shaderpack.ProgramSet;
+import net.coderbot.iris.shaderpack.texture.TextureStage;
 import net.minecraft.client.render.Camera;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -45,16 +47,26 @@ public class MixinNewWorldRenderingPipeline {
         }
     }
 
-    @Inject(method = "renderShadows", at = @At("TAIL"))
-    private void renderShadows(LevelRendererAccessor par1, Camera par2, CallbackInfo ci) {
-        GlTexture customTexture = (GlTexture) customTextureManager.getIrisCustomTextures().get("customtex0");
+    @Unique
+    private @Nullable VGImage getCustomtexOrNull() {
+        // Try getting the custom texture from the list of binary textures
+        TextureAccess customTexture = customTextureManager.getIrisCustomTextures().get("customtex0");
 
-        VGImage image = null;
-
-        if(customTexture != null) {
-            image = ((IGlTextureVkGetter)(Object)customTexture).getImage();
+        // If none were found, try getting it from the png custom texture list
+        if (customTexture == null) {
+            customTexture = customTextureManager.getCustomTextureIdMap(TextureStage.GBUFFERS_AND_SHADOW).get("customtex0");
         }
 
+        if (customTexture != null) {
+            return ((IVGImage) customTexture).getVGImage();
+        }
+
+        return null;
+    }
+
+    @Inject(method = "renderShadows", at = @At("TAIL"))
+    private void renderShadows(LevelRendererAccessor par1, Camera par2, CallbackInfo ci) {
+        VGImage image = getCustomtexOrNull();
         pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.get(0)).getMain(), image, par2);
     }
 
