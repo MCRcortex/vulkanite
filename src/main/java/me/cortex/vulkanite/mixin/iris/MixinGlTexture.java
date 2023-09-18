@@ -52,8 +52,6 @@ public abstract class MixinGlTexture extends MixinGlResource implements IVGImage
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
 
-        System.out.println("Intercepted GlTexture creation: " + sizeX + "x" + sizeY + "x" + sizeZ + ", texture ID " + sharedImage.glId + " with format " + textureFormat);
-
         this.setGlId(sharedImage.glId);
 
         return sharedImage.glId;
@@ -77,10 +75,6 @@ public abstract class MixinGlTexture extends MixinGlResource implements IVGImage
                 GL30.glTexSubImage3D(target, 0, 0, 0, 0, width, height, depth, format, pixelType, data);
                 break;
         }
-
-        InternalTextureFormat textureFormat = FormatConverter.findFormatFromGlFormat(internalFormat);
-
-        System.out.println("Intercepted GlTexture upload: " + width + "x" + height + "x" + depth + ", texture ID " + sharedImage.glId + " with format " + textureFormat + ". Uploaded " + data.limit() + " bytes.");
     }
 
     @Overwrite
