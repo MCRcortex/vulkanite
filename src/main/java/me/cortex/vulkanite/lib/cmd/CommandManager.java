@@ -45,6 +45,19 @@ public class CommandManager {
         }
     }
 
+    public void submitOnceAndWait(int queueId, VCmdBuff cmdBuff) {
+        try (var stack = stackPush()) {
+            var submit = VkSubmitInfo.calloc(stack).sType$Default()
+                    .pCommandBuffers(stack.pointers(cmdBuff))
+                    .pWaitSemaphores(stack.longs())
+                    .pWaitDstStageMask(stack.ints())
+                    .pSignalSemaphores(stack.longs());
+            vkQueueSubmit(queues[queueId], submit, 0);
+            vkQueueWaitIdle(queues[queueId]);
+            cmdBuff.freeInternal();
+        }
+    }
+
     //TODO: if its a single use command buffer, automatically add the required fences and stuff to free the command buffer once its done
     public void submit(int queueId, VCmdBuff[] cmdBuffs, VSemaphore[] waits, int[] waitStages, VSemaphore[] triggers, VFence fence) {
         if (queueId == 0) {

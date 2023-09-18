@@ -55,7 +55,7 @@ public class Vulkanite {
         ctx = createVulkanContext();
 
         //Fill in the shared index buffer with a large count so we (hopefully) dont have to worry about it anymore
-        SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 30000);
+        // SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 30000);
 
         accelerationManager = new AccelerationManager(ctx, 1);
     }

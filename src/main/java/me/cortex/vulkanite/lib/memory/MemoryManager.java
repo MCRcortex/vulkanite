@@ -37,8 +37,7 @@ public class MemoryManager {
     private final VmaAllocator allocator;
     private final VmaAllocator.MemoryPool shared;
     private final boolean hasDeviceAddresses;
-    //VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT_KHR
-    //TODO: FIXME: i think the vma allocator must be allocated with VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT, or at least the pools should
+
     public MemoryManager(VkDevice device, boolean hasDeviceAddresses) {
         this.device = device;
         this.hasDeviceAddresses = hasDeviceAddresses;
