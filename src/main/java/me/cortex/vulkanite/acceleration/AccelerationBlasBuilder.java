@@ -8,17 +8,14 @@ import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
-import me.cortex.vulkanite.lib.memory.MemoryManager;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VQueryPool;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
-import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
-import me.jellysquid.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import me.jellysquid.mods.sodium.client.util.NativeBuffer;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
@@ -31,11 +28,6 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Semaphore;
 import java.util.function.Consumer;
 
-import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
-import static org.lwjgl.opengl.ARBDirectStateAccess.*;
-import static org.lwjgl.opengl.GL15.*;
-import static org.lwjgl.opengl.GL45.nglNamedBufferData;
-import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
@@ -112,7 +104,6 @@ public class AccelerationBlasBuilder {
                 LongBuffer pAccelerationStructures = stack.mallocLong(jobs.size());
 
                 List<VBuffer> buffersToFree = new ArrayList<>(jobs.size() * 2);
-                List<VBuffer> buildBuffers = new ArrayList<>(jobs.size());
                 var scratchBuffers = new VBuffer[jobs.size()];
                 var accelerationStructures = new VAccelerationStructure[jobs.size()];
 
@@ -129,33 +120,26 @@ public class AccelerationBlasBuilder {
                     buildRanges.put(brs);
 
                     long buildBufferSize = 0;
-                    List<Integer> geometrySizes = new ArrayList<>(job.geometries.size());
-                    List<VBuffer> hostGeometryBuffers = new ArrayList<>(job.geometries.size());
 
                     for (var geometry : job.geometries) {
-                        //TODO: also need to store the buffer so it can be freed later (after blas build the vertex data can be freed as blas is self contained)
-                        var buf = context.memory.createBuffer(geometry.geometry.getLength(),
-                                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                                0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-                        long ptr = buf.map();
-                        MemoryUtil.memCopy(MemoryUtil.memAddress(geometry.geometry.getDirectBuffer()), ptr, geometry.geometry.getLength());
-                        buf.unmap();
-                        buffersToFree.add(buf);
-                        hostGeometryBuffers.add(buf);
-                        geometrySizes.add(geometry.geometry.getLength());
+                        if (geometry.geometry.getLength() <= 0) {
+                            throw new IllegalStateException("Geometry size <= 0");
+                        }
 
                         buildBufferSize += geometry.geometry.getLength();
                         //After we copy it over, we can free the native buffer
-                        geometry.geometry.free();
+                    }
+
+                    if (buildBufferSize <= 0) {
+                        throw new IllegalStateException("Build buffer size <= 0");
                     }
 
                     var buildBuffer = context.memory.createBuffer(buildBufferSize,
-                                VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-                                        | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-                                        | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                                0, 0);
+                            VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                                    | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                            0, 0);
                     buffersToFree.add(buildBuffer);
                     var buildBufferAddr = buildBuffer.deviceAddress();
                     long buildBufferOffset = 0;
@@ -166,10 +150,17 @@ public class AccelerationBlasBuilder {
                         var geometryInfo = geometryInfos.get().sType$Default();
                         var br = brs.get();
 
-                        VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(context, geometry.quadCount);
+                        uploadBuildCmd.encodeDataUpload(context.memory,
+                                MemoryUtil.memAddress(geometry.geometry.getDirectBuffer()), buildBuffer,
+                                buildBufferOffset, geometry.geometry.getLength());
+
+                        VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(context,
+                                uploadBuildCmd,
+                                Integer.max(geometry.quadCount, 30000));
                         int indexType = SharedQuadVkIndexBuffer.TYPE;
 
-                        VkDeviceOrHostAddressConstKHR vertexData = VkDeviceOrHostAddressConstKHR.calloc(stack).deviceAddress(buildBufferAddr + buildBufferOffset);
+                        VkDeviceOrHostAddressConstKHR vertexData = VkDeviceOrHostAddressConstKHR.calloc(stack)
+                                .deviceAddress(buildBufferAddr + buildBufferOffset);
                         int vertexFormat = VK_FORMAT_R16G16B16_SFLOAT;//VK_FORMAT_R32G32B32_SFLOAT;
                         int vertexStride = 2*3;
 
@@ -192,21 +183,12 @@ public class AccelerationBlasBuilder {
                         //maxPrims.put(2);
                         //br.primitiveCount(2);
 
-                        var bufferCopy = VkBufferCopy.calloc(1, stack);
-                        bufferCopy.get(0).srcOffset(0)
-                                .dstOffset(buildBufferOffset)
-                                .size(geometrySizes.get(geoIdx));
-                        vkCmdCopyBuffer(uploadBuildCmd.buffer, hostGeometryBuffers.get(geoIdx).buffer(), buildBuffer.buffer(), bufferCopy);
-
-                        buildBufferOffset += geometrySizes.get(geoIdx);
+                        buildBufferOffset += geometry.geometry.getLength();
+                        geometry.geometry.free();
                     }
 
-                    var bufferBarrier = VkBufferMemoryBarrier.calloc(1, stack);
-                    bufferBarrier.get(0).sType$Default().buffer(buildBuffer.buffer())
-                            .srcAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT)
-                            .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR).size(buildBufferSize);
-                    vkCmdPipelineBarrier(uploadBuildCmd.buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, null, bufferBarrier, null);
+                    uploadBuildCmd.encodeBufferBarrier(buildBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
 
                     geometryInfos.rewind();
                     maxPrims.rewind();
@@ -255,10 +237,7 @@ public class AccelerationBlasBuilder {
                     vkCmdBuildAccelerationStructuresKHR(uploadBuildCmd.buffer, buildInfos, buildRanges);
 
                     //TODO: should probably do memory barrier to read access
-                    vkCmdPipelineBarrier(uploadBuildCmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1)
-                            .sType$Default()
-                            .srcAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)
-                            .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR), null, null);
+                    uploadBuildCmd.encodeMemoryBarrier();
 
                     queryPool.reset(uploadBuildCmd, 0, jobs.size());
                     vkCmdWriteAccelerationStructuresPropertiesKHR(
@@ -267,8 +246,6 @@ public class AccelerationBlasBuilder {
                             VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
                             queryPool.pool,
                             0);
-
-                    vkCmdPipelineBarrier(uploadBuildCmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, null, null, null);
 
                     uploadBuildCmd.end();
 
@@ -370,41 +347,55 @@ public class AccelerationBlasBuilder {
 
 
 
-    private VBuffer uploadTerrainGeometry(BuiltSectionMeshParts meshParts) {
-        var buff = context.memory.createSharedBuffer(meshParts.getVertexData().getLength(),
+    private VBuffer uploadTerrainGeometry(BuiltSectionMeshParts meshParts, VCmdBuff cmd) {
+        var buff = context.memory.createBuffer(meshParts.getVertexData().getLength(),
                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-        int glHolder = glCreateBuffers();
-        nglNamedBufferData(glHolder, meshParts.getVertexData().getLength(), MemoryUtil.memAddress(meshParts.getVertexData().getDirectBuffer()), GL_STREAM_COPY);
-        glCopyNamedBufferSubData(glHolder, buff.glId, 0, 0, meshParts.getVertexData().getLength());
-        glDeleteBuffers(glHolder);
+        cmd.encodeDataUpload(context.memory, MemoryUtil.memAddress(meshParts.getVertexData().getDirectBuffer()), buff, 0, meshParts.getVertexData().getLength());
 
         return buff;
     }
 
     //Enqueues jobs of section blas builds
     public void enqueue(List<ChunkBuildOutput> batch) {
+        var cmd = sinlgeUsePool.createCommandBuffer();
+        boolean hasJobs = false;
+
         List<BLASBuildJob> jobs = new ArrayList<>(batch.size());
         for (ChunkBuildOutput cbr : batch) {
-            var acbr = ((IAccelerationBuildResult)cbr).getAccelerationGeometryData();
+            var acbr = ((IAccelerationBuildResult) cbr).getAccelerationGeometryData();
             if (acbr == null)
                 continue;
             List<BLASTriangleData> buildData = new ArrayList<>();
             List<VBuffer> geometryBuffers = new ArrayList<>();
             for (var entry : acbr.entrySet()) {
-                //TODO: dont hardcode the stride size
-                int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID?VK_GEOMETRY_OPAQUE_BIT_KHR:0;
+                // TODO: dont hardcode the stride size
+                int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0;
                 buildData.add(new BLASTriangleData(entry.getValue().quadCount(), entry.getValue().data(), flag));
 
                 var geometry = cbr.getMesh(entry.getKey());
                 if (geometry.getVertexData().getLength() == 0) {
                     throw new IllegalStateException();
                 }
-                geometryBuffers.add(uploadTerrainGeometry(geometry));
+
+                if (!hasJobs) {
+                    hasJobs = true;
+                    cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                }
+
+                geometryBuffers.add(uploadTerrainGeometry(geometry, cmd));
             }
 
-            jobs.add(new BLASBuildJob(buildData, new JobPassThroughData(cbr.render, cbr.buildTime, geometryBuffers)));
+            if (buildData.size() > 0) {
+                jobs.add(new BLASBuildJob(buildData,
+                        new JobPassThroughData(cbr.render, cbr.buildTime, geometryBuffers)));
+            }
+        }
+
+        if (hasJobs) {
+            cmd.end();
+            context.cmd.submitOnceAndWait(asyncQueue, cmd);
         }
 
         if (jobs.isEmpty()) {

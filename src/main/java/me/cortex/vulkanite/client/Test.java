@@ -124,7 +124,7 @@ public class Test {
         mem.flush();
         System.gc();
 
-        SharedQuadVkIndexBuffer.getIndexBuffer(context, 10000);
+        // SharedQuadVkIndexBuffer.getIndexBuffer(context, uploadCmd, 10000);
 
 
         var layout = new DescriptorSetLayoutBuilder()
