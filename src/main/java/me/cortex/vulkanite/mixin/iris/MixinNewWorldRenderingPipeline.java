@@ -6,6 +6,9 @@ import me.cortex.vulkanite.compat.IGetRaytracingSource;
 import me.cortex.vulkanite.compat.IRenderTargetVkGetter;
 import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
+import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
+import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
+import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
 import net.coderbot.iris.mixin.LevelRendererAccessor;
 import net.coderbot.iris.pipeline.newshader.NewWorldRenderingPipeline;
 import net.coderbot.iris.rendertarget.RenderTargets;
@@ -22,6 +25,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(value = NewWorldRenderingPipeline.class, remap = false)
 public class MixinNewWorldRenderingPipeline {
     @Shadow @Final private RenderTargets renderTargets;
+    @Shadow private ShaderStorageBufferHolder shaderStorageBufferHolder;
     @Unique private RaytracingShaderSet[] rtShaderPasses = null;
     @Unique private VContext ctx;
     @Unique private VulkanPipeline pipeline;
@@ -36,13 +40,14 @@ public class MixinNewWorldRenderingPipeline {
             for (int i = 0; i < passes.length; i++) {
                 rtShaderPasses[i] = new RaytracingShaderSet(ctx, passes[i]);
             }
-            pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses);
+
+            pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses, set.getPackDirectives().getBufferObjects().keySet().toArray(new int[0]));
         }
     }
 
     @Inject(method = "renderShadows", at = @At("TAIL"))
     private void renderShadows(LevelRendererAccessor par1, Camera par2, CallbackInfo ci) {
-        pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.get(0)).getMain(), par2);
+        pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.getOrCreate(0)).getMain(), par2, ((ShaderStorageBufferHolderAccessor)shaderStorageBufferHolder).getBuffers());
     }
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))

@@ -1,6 +1,6 @@
 package me.cortex.vulkanite.mixin.sodium.gl;
 
-import me.cortex.vulkanite.compat.IVkBuffer;
+import me.cortex.vulkanite.compat.IVGBuffer;
 import me.cortex.vulkanite.lib.memory.VGBuffer;
 import me.jellysquid.mods.sodium.client.gl.buffer.GlBuffer;
 import me.jellysquid.mods.sodium.client.gl.buffer.GlMutableBuffer;
@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.Unique;
 import static org.lwjgl.opengl.GL15C.glDeleteBuffers;
 
 @Mixin(value = GlMutableBuffer.class, remap = false)
-public class MixinMutableBuffer extends GlBuffer implements IVkBuffer {
+public class MixinMutableBuffer extends GlBuffer implements IVGBuffer {
     @Unique private VGBuffer vkBuffer;
 
     public VGBuffer getBuffer() {

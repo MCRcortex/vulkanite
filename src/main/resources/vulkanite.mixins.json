@@ -28,5 +28,10 @@
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "mixins": [
+    "iris.MixinShaderStorageBuffer",
+    "iris.MixinShaderStorageBufferHolder",
+    "iris.ShaderStorageBufferHolderAccessor"
+  ]
 }
