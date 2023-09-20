@@ -58,14 +58,16 @@ public class VulkanPipeline {
     private final VCommandPool singleUsePool;
 
     private VRaytracePipeline[] raytracePipelines;
-    private VDescriptorSetLayout layout;
+    private VDescriptorSetLayout commonLayout;
+    private VDescriptorSetLayout customtexLayout;
+    private VDescriptorSetLayout storageBufferLayout;
     private VDescriptorPool descriptors;
 
     private final VSampler sampler;
     private final VSampler ctexSampler;
 
     private final SharedImageViewTracker composite0mainView;
-    private final SharedImageViewTracker customTextureView;
+    private final SharedImageViewTracker[] customTextureViews;
     private final SharedImageViewTracker blockAtlasView;
     private final SharedImageViewTracker blockAtlasNormalView;
     private final SharedImageViewTracker blockAtlasSpecularView;
@@ -75,14 +77,19 @@ public class VulkanPipeline {
 
     private int fidx;
 
-    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds) {
+    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds, VGImage[] customTextures) {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
         this.singleUsePool = ctx.cmd.createSingleUsePool();
 
         {
+            this.customTextureViews = new SharedImageViewTracker[customTextures.length];
+            for(int i = 0; i < customTextures.length; i++) {
+                int index = i;
+                this.customTextureViews[i] = new SharedImageViewTracker(ctx, ()->customTextures[index]);
+            }
+
             this.composite0mainView = new SharedImageViewTracker(ctx, null);
-            this.customTextureView = new SharedImageViewTracker(ctx, null);
             this.blockAtlasView = new SharedImageViewTracker(ctx, ()->{
                 AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
                 return ((IVGImage)blockAtlas).getVGImage();
@@ -138,30 +145,46 @@ public class VulkanPipeline {
                 .maxAnisotropy(1.0f));
 
         try {
-            var layoutBuilder = new DescriptorSetLayoutBuilder()
-                    .binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)//camera data
-                    .binding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)//funni acceleration buffer
-                    .binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL)//funni buffer buffer
-                    .binding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)//output texture
+            commonLayout = new DescriptorSetLayoutBuilder()
+                    .binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)// camera data
+                    .binding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)// funni acceleration buffer
+                    .binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL)// funni buffer buffer
                     .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
                     .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
-                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL);//block texture specular
+                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
+                    // Reordered these so output texture is last... this means you can dynamically add more output textures without messing other ids
+                    .binding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)// output texture
+                    .build(ctx);
 
-            for (int id : ssboIds) {
-                //NOTE:FIXME: the + 7 is cause of all the other bindings
-                layoutBuilder.binding(id + 7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL);
+            DescriptorSetLayoutBuilder ctexLayoutBuilder = new DescriptorSetLayoutBuilder();
+            for (int i = 0; i < customTextureViews.length; i++) {
+                ctexLayoutBuilder.binding(i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL);
             }
 
+            customtexLayout = ctexLayoutBuilder.build(ctx);
 
-            layout = layoutBuilder.build(ctx);
+            DescriptorSetLayoutBuilder ssboLayoutBuilder = new DescriptorSetLayoutBuilder();
+            for (int id : ssboIds) {
+                ssboLayoutBuilder.binding(id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL);
+            }
 
+            storageBufferLayout = ssboLayoutBuilder.build(ctx);
+
+            // Using commonLayout.types is good enough because both VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER and VK_DESCRIPTOR_TYPE_STORAGE_BUFFER are used there already...
             //TODO: use frameahead count instead of just... 10
-            descriptors = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, layout.types);
-            descriptors.allocateSets(layout);
+            descriptors = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, commonLayout.types);
+            descriptors.allocateSets(new VDescriptorSetLayout[]{
+                    commonLayout,
+                    customtexLayout,
+                    storageBufferLayout
+            });
 
             raytracePipelines = new VRaytracePipeline[passes.length];
             for (int i = 0; i < passes.length; i++) {
-                var builder = new RaytracePipelineBuilder().addLayout(layout);
+                var builder = new RaytracePipelineBuilder()
+                        .addLayout(commonLayout)
+                        .addLayout(customtexLayout)
+                        .addLayout(storageBufferLayout);
                 passes[i].apply(builder);
                 raytracePipelines[i] = builder.build(ctx, 1);
             }
@@ -180,14 +203,13 @@ public class VulkanPipeline {
                 .srcAccessMask(0)
                 .dstAccessMask(targetAccess)
                 .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT));
-
     }
 
 
     private VSemaphore previousSemaphore;
 
     private int frameId;
-  
+
     public void renderPostShadows(VGImage outImg, Camera camera, ShaderStorageBuffer[] ssbos) {
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
@@ -243,19 +265,34 @@ public class VulkanPipeline {
             uboBuffer.unmap();
             uboBuffer.flush();
 
-            long desc = descriptors.get(fidx);
+            long commonSet = descriptors.get(0);
+            long ctexSet = descriptors.get(1);
+            long ssboSet = descriptors.get(2);
 
-            var updater = new DescriptorUpdateBuilder(ctx, 7 + ssbos.length, placeholderImageView)
-                    .set(desc)
+            var updater = new DescriptorUpdateBuilder(ctx, 7, placeholderImageView)
+                    .set(commonSet)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
                     .buffer(2, accelerationManager.getReferenceBuffer())
-                    .imageStore(3, composite0mainView.getView(()->outImg))
-                    .imageSampler(4, blockAtlasView.getView(), sampler)
-                    .imageSampler(5, blockAtlasNormalView.getView(), sampler)
-                    .imageSampler(6, blockAtlasSpecularView.getView(), sampler);
+                    .imageSampler(3, blockAtlasView.getView(), sampler)
+                    .imageSampler(4, blockAtlasNormalView.getView(), sampler)
+                    .imageSampler(5, blockAtlasSpecularView.getView(), sampler)
+                    .imageStore(6, composite0mainView.getView(()->outImg));
+            updater.apply();
+
+            updater = new DescriptorUpdateBuilder(ctx, customTextureViews.length, placeholderImageView)
+                    .set(ctexSet);
+
+            for (int i = 0; i < customTextureViews.length; i++) {
+                updater.imageSampler(i, customTextureViews[i].getView(), ctexSampler);
+            }
+            updater.apply();
+
+            updater = new DescriptorUpdateBuilder(ctx, ssbos.length, placeholderImageView)
+                    .set(ssboSet);
+
             for (ShaderStorageBuffer ssbo : ssbos) {
-                updater.buffer(ssbo.getIndex() + 7, ((IVGBuffer) ssbo).getBuffer());
+                updater.buffer(ssbo.getIndex(), ((IVGBuffer) ssbo).getBuffer());
             }
             updater.apply();
 
@@ -264,15 +301,18 @@ public class VulkanPipeline {
             cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
             try (var stack = stackPush()) {
-                var barriers = VkImageMemoryBarrier.calloc(5, stack);
+                var barriers = VkImageMemoryBarrier.calloc(4 + customTextureViews.length, stack);
                 applyImageBarrier(barriers.get(), composite0mainView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_SHADER_WRITE_BIT);
                 applyImageBarrier(barriers.get(), blockAtlasView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
                 var image = blockAtlasNormalView.getImage();
                 if (image != null) applyImageBarrier(barriers.get(), image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
                 image = blockAtlasSpecularView.getImage();
                 if (image != null) applyImageBarrier(barriers.get(), image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
-                image = customTextureView.getImage();
-                if (image != null) applyImageBarrier(barriers.get(), image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+
+                for(SharedImageViewTracker customtexView : customTextureViews) {
+                   applyImageBarrier(barriers.get(), customtexView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+                }
+
                 barriers.limit(barriers.position());
                 barriers.rewind();
                 vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 0, null, null, barriers);
@@ -280,7 +320,7 @@ public class VulkanPipeline {
 
             for (var pipeline : raytracePipelines) {
                 pipeline.bind(cmd);
-                pipeline.bindDSet(cmd, desc);
+                pipeline.bindDSet(cmd, new long[]{commonSet, ctexSet, ssboSet});
                 pipeline.trace(cmd, outImg.width, outImg.height, 1);
             }
 
@@ -316,7 +356,9 @@ public class VulkanPipeline {
         for (var pass : raytracePipelines) {
             pass.free();
         }
-        layout.free();
+        commonLayout.free();
+        customtexLayout.free();
+        storageBufferLayout.free();
         descriptors.free();
         ctx.sync.checkFences();
         singleUsePool.doReleases();
@@ -324,8 +366,12 @@ public class VulkanPipeline {
         if (previousSemaphore != null) {
             previousSemaphore.free();
         }
+
+        for (SharedImageViewTracker customTexView : customTextureViews) {
+            customTexView.free();
+        }
+
         composite0mainView.free();
-        customTextureView.free();
         blockAtlasView.free();
         blockAtlasNormalView.free();
         blockAtlasSpecularView.free();
