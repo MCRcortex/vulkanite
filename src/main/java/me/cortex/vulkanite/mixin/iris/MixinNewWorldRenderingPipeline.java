@@ -9,6 +9,9 @@ import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import net.coderbot.iris.gl.texture.TextureAccess;
+import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
+import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
+import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
 import net.coderbot.iris.mixin.LevelRendererAccessor;
 import net.coderbot.iris.pipeline.CustomTextureManager;
 import net.coderbot.iris.pipeline.newshader.NewWorldRenderingPipeline;
@@ -27,12 +30,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = NewWorldRenderingPipeline.class, remap = false)
 public class MixinNewWorldRenderingPipeline {
+  
     @Shadow @Final private RenderTargets renderTargets;
     @Shadow @Final private CustomTextureManager customTextureManager;
+    @Shadow private ShaderStorageBufferHolder shaderStorageBufferHolder;
+  
     @Unique private RaytracingShaderSet[] rtShaderPasses = null;
     @Unique private VContext ctx;
     @Unique private VulkanPipeline pipeline;
-
 
     @Inject(method = "<init>", at = @At("TAIL"))
     private void injectRTShader(ProgramSet set, CallbackInfo ci) {
@@ -43,7 +48,8 @@ public class MixinNewWorldRenderingPipeline {
             for (int i = 0; i < passes.length; i++) {
                 rtShaderPasses[i] = new RaytracingShaderSet(ctx, passes[i]);
             }
-            pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses);
+
+            pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses, set.getPackDirectives().getBufferObjects().keySet().toArray(new int[0]));
         }
     }
 
@@ -67,7 +73,8 @@ public class MixinNewWorldRenderingPipeline {
     @Inject(method = "renderShadows", at = @At("TAIL"))
     private void renderShadows(LevelRendererAccessor par1, Camera par2, CallbackInfo ci) {
         VGImage image = getCustomtexOrNull();
-        pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.get(0)).getMain(), image, par2);
+        // pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.get(0)).getMain(), image, par2);
+        pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.getOrCreate(0)).getMain(), par2, ((ShaderStorageBufferHolderAccessor)shaderStorageBufferHolder).getBuffers());
     }
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))

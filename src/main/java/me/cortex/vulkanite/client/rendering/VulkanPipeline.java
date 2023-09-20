@@ -2,6 +2,7 @@ package me.cortex.vulkanite.client.rendering;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
 import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.compat.IVGBuffer;
 import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
@@ -19,6 +20,9 @@ import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
+import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
+import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
+import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
 import net.coderbot.iris.texture.pbr.PBRTextureHolder;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
@@ -71,7 +75,7 @@ public class VulkanPipeline {
 
     private int fidx;
 
-    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes) {
+    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds) {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
         this.singleUsePool = ctx.cmd.createSingleUsePool();
@@ -134,16 +138,22 @@ public class VulkanPipeline {
                 .maxAnisotropy(1.0f));
 
         try {
-            layout = new DescriptorSetLayoutBuilder()
+            var layoutBuilder = new DescriptorSetLayoutBuilder()
                     .binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)//camera data
                     .binding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)//funni acceleration buffer
                     .binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL)//funni buffer buffer
                     .binding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)//output texture
                     .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
                     .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
-                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
-                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//custom texture sampler
-                    .build(ctx);
+                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL);//block texture specular
+
+            for (int id : ssboIds) {
+                //NOTE:FIXME: the + 7 is cause of all the other bindings
+                layoutBuilder.binding(id + 7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL);
+            }
+
+
+            layout = layoutBuilder.build(ctx);
 
             //TODO: use frameahead count instead of just... 10
             descriptors = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, layout.types);
@@ -177,7 +187,8 @@ public class VulkanPipeline {
     private VSemaphore previousSemaphore;
 
     private int frameId;
-    public void renderPostShadows(VGImage outImg, VGImage customTexture, Camera camera) {
+  
+    public void renderPostShadows(VGImage outImg, Camera camera, ShaderStorageBuffer[] ssbos) {
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
 
@@ -234,7 +245,7 @@ public class VulkanPipeline {
 
             long desc = descriptors.get(fidx);
 
-            new DescriptorUpdateBuilder(ctx, 8, placeholderImageView)
+            var updater = new DescriptorUpdateBuilder(ctx, 7 + ssbos.length, placeholderImageView)
                     .set(desc)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
@@ -242,10 +253,11 @@ public class VulkanPipeline {
                     .imageStore(3, composite0mainView.getView(()->outImg))
                     .imageSampler(4, blockAtlasView.getView(), sampler)
                     .imageSampler(5, blockAtlasNormalView.getView(), sampler)
-                    .imageSampler(6, blockAtlasSpecularView.getView(), sampler)
-                    .imageSampler(7, customTextureView.getView(()->customTexture), ctexSampler)
-                    .apply();
-
+                    .imageSampler(6, blockAtlasSpecularView.getView(), sampler);
+            for (ShaderStorageBuffer ssbo : ssbos) {
+                updater.buffer(ssbo.getIndex() + 7, ((IVGBuffer) ssbo).getBuffer());
+            }
+            updater.apply();
 
             //TODO: dont use a single use pool for commands like this...
             var cmd = singleUsePool.createCommandBuffer();

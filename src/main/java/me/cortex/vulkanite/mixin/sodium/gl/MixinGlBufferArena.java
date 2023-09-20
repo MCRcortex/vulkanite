@@ -1,7 +1,7 @@
 package me.cortex.vulkanite.mixin.sodium.gl;
 
+import me.cortex.vulkanite.compat.IVGBuffer;
 import me.cortex.vulkanite.compat.IVulkanContextGetter;
-import me.cortex.vulkanite.compat.IVkBuffer;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.memory.VGBuffer;
 import me.jellysquid.mods.sodium.client.gl.arena.GlBufferArena;
@@ -26,14 +26,14 @@ public class MixinGlBufferArena {
 
     @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lme/jellysquid/mods/sodium/client/gl/device/CommandList;allocateStorage(Lme/jellysquid/mods/sodium/client/gl/buffer/GlMutableBuffer;JLme/jellysquid/mods/sodium/client/gl/buffer/GlBufferUsage;)V"))
     private void redirectBufferInit(CommandList instance, GlMutableBuffer buffer, long size, GlBufferUsage usage) {
-        var vkglbuff = (IVkBuffer)buffer;
+        var vkglbuff = (IVGBuffer)buffer;
         var ctx = ((IVulkanContextGetter)instance).getCtx();
         vkglbuff.setBuffer(createBuffer(ctx, size));
     }
 
     @Redirect(method = "transferSegments", at = @At(value = "INVOKE", target = "Lme/jellysquid/mods/sodium/client/gl/device/CommandList;allocateStorage(Lme/jellysquid/mods/sodium/client/gl/buffer/GlMutableBuffer;JLme/jellysquid/mods/sodium/client/gl/buffer/GlBufferUsage;)V"))
     private void redirectBufferTransfer(CommandList instance, GlMutableBuffer buffer, long size, GlBufferUsage usage) {
-        var vkglbuff = (IVkBuffer)buffer;
+        var vkglbuff = (IVGBuffer)buffer;
         var ctx = ((IVulkanContextGetter)instance).getCtx();
         vkglbuff.setBuffer(createBuffer(ctx, size));
     }
