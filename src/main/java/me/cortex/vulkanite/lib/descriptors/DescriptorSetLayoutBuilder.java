@@ -55,7 +55,7 @@ public class DescriptorSetLayoutBuilder {
             if (!bindingFlagsMap.isEmpty()) {
                 var bindingFlags = new int[bindings.remaining()];
                 for (var i = 0; i < bindings.remaining(); i++) {
-                    bindingFlags[i] = bindingFlagsMap.getOrDefault(i, 0);
+                    bindingFlags[i] = bindingFlagsMap.getOrDefault(bindings.get(i).binding(), 0);
                 }
 
                 var bindingInfo = VkDescriptorSetLayoutBindingFlagsCreateInfo.calloc(stack)
