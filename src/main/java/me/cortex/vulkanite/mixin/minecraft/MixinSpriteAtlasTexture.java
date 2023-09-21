@@ -30,6 +30,7 @@ public abstract class MixinSpriteAtlasTexture extends AbstractTexture implements
         var img = Vulkanite.INSTANCE.getCtx().memory.createSharedImage(
                 width,
                 height,
+                1,
                 maxLevel + 1,
                 VK_FORMAT_R8G8B8A8_UNORM,
                 GL_RGBA8,

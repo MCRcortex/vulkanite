@@ -4,6 +4,9 @@
   "package": "me.cortex.vulkanite.mixin",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "iris.MixinNativeImageBackedTexture",
+    "iris.MixinGlResource",
+    "iris.MixinGlTexture",
     "iris.MixinNewWorldRenderingPipeline",
     "iris.MixinPackRenderTargetDirectives",
     "iris.MixinPBRAtlasTexture",

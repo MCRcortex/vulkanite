@@ -10,8 +10,8 @@ public class VGImage extends VImage {
     public final int glFormat;
     private final long handle;
 
-    VGImage(VmaAllocator.ImageAllocation allocation, int width, int height, int mipLayers, int format, int glFormat, int glId, int glMemObj, long handle) {
-        super(allocation, width, height, mipLayers, format);
+    VGImage(VmaAllocator.ImageAllocation allocation, int width, int height, int depth, int mipLayers, int format, int glFormat, int glId, int glMemObj, long handle) {
+        super(allocation, width, height, depth, mipLayers, format);
         this.glId = glId;
         this.glMemObj = glMemObj;
         this.glFormat = glFormat;

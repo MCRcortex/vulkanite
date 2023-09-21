@@ -38,7 +38,7 @@ public class Uniforms {
 
 
     static Vector4f getCelestialPosition(float y) {
-        final float sunPathRotation = 0.0f;
+        final float sunPathRotation = -45.0f;
 
         Vector4f position = new Vector4f(0.0F, y, 0.0F, 0.0F);
 
