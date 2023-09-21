@@ -147,7 +147,7 @@ public class VulkanPipeline {
 
             raytracePipelines = new VRaytracePipeline[passes.length];
             for (int i = 0; i < passes.length; i++) {
-                var builder = new RaytracePipelineBuilder().addLayout(layout);
+                var builder = new RaytracePipelineBuilder().addLayout(layout).addLayout(accelerationManager.getGeometryLayout());
                 passes[i].apply(builder);
                 raytracePipelines[i] = builder.build(ctx, 1);
             }
@@ -233,7 +233,6 @@ public class VulkanPipeline {
                     .set(desc)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
-                    .buffer(2, accelerationManager.getReferenceBuffer())
                     .imageStore(3, composite0mainView.getView(()->outImg))
                     .imageSampler(4, blockAtlasView.getView(), sampler)
                     .imageSampler(5, blockAtlasNormalView.getView(), sampler)
@@ -263,7 +262,7 @@ public class VulkanPipeline {
 
             for (var pipeline : raytracePipelines) {
                 pipeline.bind(cmd);
-                pipeline.bindDSet(cmd, desc);
+                pipeline.bindDSet(cmd, desc, accelerationManager.getGeometrySet());
                 pipeline.trace(cmd, outImg.width, outImg.height, 1);
             }
 

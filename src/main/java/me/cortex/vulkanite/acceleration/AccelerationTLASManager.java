@@ -7,25 +7,29 @@ import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
+import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
+import me.cortex.vulkanite.lib.descriptors.DescriptorUpdateBuilder;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorPool;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import net.minecraft.util.math.ChunkSectionPos;
-import net.minecraft.world.chunk.ChunkSection;
 import org.joml.Matrix4x3f;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
 import java.util.*;
+import java.util.concurrent.LinkedBlockingDeque;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
-import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+import static org.lwjgl.vulkan.VK12.*;
 
 public class AccelerationTLASManager {
     private final TLASSectionManager buildDataManager = new TLASSectionManager();
@@ -41,6 +45,7 @@ public class AccelerationTLASManager {
         this.context = context;
         this.queue = queue;
         this.singleUsePool = context.cmd.createSingleUsePool();
+        this.buildDataManager.resizeBindlessSet(0, null);
     }
 
     //Returns a sync semaphore to chain in the next command submit
@@ -309,25 +314,88 @@ public class AccelerationTLASManager {
         }
     }
 
+    private static int roundUpPow2(int v) {
+        v--;
+        v |= v >> 1;
+        v |= v >> 2;
+        v |= v >> 4;
+        v |= v >> 8;
+        v |= v >> 16;
+        v++;
+        return v;
+    }
+
     private final class TLASSectionManager extends TLASGeometryManager {
         private final TlasPointerArena arena = new TlasPointerArena(30000);
-        private final long arrayRef = MemoryUtil.nmemCalloc(30000 * 3, 8);
-        public VBuffer geometryReferenceBuffer;
+
+        private VDescriptorSetLayout geometryBufferSetLayout;
+        private VDescriptorPool geometryBufferDescPool;
+        private long geometryBufferDescSet = 0;
+
+        private int setCapacity = 0;
+
+        private record DescUpdateJob(int binding, int dstArrayElement, List<VBuffer> buffers) {}
+        private final LinkedBlockingDeque<DescUpdateJob> descUpdateJobs = new LinkedBlockingDeque<>();
+
+        public void resizeBindlessSet(int newSize, VFence fence) {
+            if (geometryBufferSetLayout == null) {
+                var layoutBuilder = new DescriptorSetLayoutBuilder(VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT);
+                layoutBuilder.binding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 65536, VK_SHADER_STAGE_ALL);
+                layoutBuilder.setBindingFlags(0, VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
+                geometryBufferSetLayout = layoutBuilder.build(context);
+            }
+
+            if (newSize > setCapacity) {
+                int newCapacity = roundUpPow2(Math.max(newSize, 32));
+                var newGeometryBufferDescPool = new VDescriptorPool(context, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT, 1, newCapacity, geometryBufferSetLayout.types);
+                newGeometryBufferDescPool.allocateSets(geometryBufferSetLayout, new int[]{newCapacity});
+                long newGeometryBufferDescSet = newGeometryBufferDescPool.get(0);
+
+                System.out.println("New geometry desc set: " + Long.toHexString(newGeometryBufferDescSet) + " with capacity " + newCapacity);
+
+                if (geometryBufferDescSet != 0) {
+                    try (var stack = stackPush()) {
+                        var setCopy = VkCopyDescriptorSet.calloc(1, stack);
+                        setCopy.get(0)
+                                .sType$Default()
+                                .srcSet(geometryBufferDescSet)
+                                .dstSet(newGeometryBufferDescSet)
+                                .descriptorCount(setCapacity);
+                        vkUpdateDescriptorSets(context.device, null, setCopy);
+                    }
+
+                    // This breaks the shit out of it
+                    // context.sync.addCallback(fence, () -> {
+                    //     geometryBufferDescPool.free();
+                    // });
+
+                    vkDeviceWaitIdle(context.device);
+                    geometryBufferDescPool.free();
+                }
+
+                geometryBufferDescPool = newGeometryBufferDescPool;
+                geometryBufferDescSet = newGeometryBufferDescSet;
+                setCapacity = newCapacity;
+            }
+
+        }
 
         @Override
         public void setGeometryUpdateMemory(VCmdBuff cmd, VFence fence, VkAccelerationStructureGeometryKHR struct) {
             super.setGeometryUpdateMemory(cmd, fence, struct);
-            var ref = geometryReferenceBuffer;
-            if (ref != null) {
-                context.sync.addCallback(fence, ref::free);
+            resizeBindlessSet(arena.maxIndex, fence);
+
+            if (descUpdateJobs.isEmpty()) {
+                return;
             }
-            geometryReferenceBuffer = context.memory.createBuffer(8L * arena.maxIndex,
-                    VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                    VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-                    0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-            long ptr = geometryReferenceBuffer.map();
-            MemoryUtil.memCopy(arrayRef, ptr, 8L * arena.maxIndex);
-            geometryReferenceBuffer.unmap();
+
+            var dub = new DescriptorUpdateBuilder(context, descUpdateJobs.size());
+            dub.set(geometryBufferDescSet);
+            while (!descUpdateJobs.isEmpty()) {
+                var job = descUpdateJobs.poll();
+                dub.buffer(job.binding, job.dstArrayElement, job.buffers);
+            }
+            dub.apply();
         }
 
         //TODO: mixinto RenderSection and add a reference to a holder for us, its much faster than a hashmap
@@ -362,10 +430,7 @@ public class AccelerationTLASManager {
             holder.geometryBuffers = data.geometryBuffers();
             holder.geometryIndex = arena.allocate(holder.geometryBuffers.size());
 
-            for (int i = 0; i < holder.geometryBuffers.size(); i++) {
-                MemoryUtil.memPutAddress(arrayRef + 8L*(holder.geometryIndex+i), holder.geometryBuffers.get(i).deviceAddress());
-            }
-
+            descUpdateJobs.add(new DescUpdateJob(0, holder.geometryIndex, holder.geometryBuffers));
 
             try (var stack = stackPush()) {
                 var asi = VkAccelerationStructureInstanceKHR.calloc(stack)
@@ -432,8 +497,12 @@ public class AccelerationTLASManager {
         }
     }
 
-    public VBuffer getReferenceBuffer() {
-        return buildDataManager.geometryReferenceBuffer;
+    public long getGeometrySet() {
+        return buildDataManager.geometryBufferDescSet;
+    }
+
+    public VDescriptorSetLayout getGeometryLayout() {
+        return buildDataManager.geometryBufferSetLayout;
     }
 
     //Called for cleaning up any remaining loose resources

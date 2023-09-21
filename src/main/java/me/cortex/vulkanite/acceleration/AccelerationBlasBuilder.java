@@ -349,7 +349,7 @@ public class AccelerationBlasBuilder {
 
     private VBuffer uploadTerrainGeometry(BuiltSectionMeshParts meshParts, VCmdBuff cmd) {
         var buff = context.memory.createBuffer(meshParts.getVertexData().getLength(),
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         cmd.encodeDataUpload(context.memory, MemoryUtil.memAddress(meshParts.getVertexData().getDirectBuffer()), buff, 0, meshParts.getVertexData().getLength());
