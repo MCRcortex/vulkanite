@@ -28,9 +28,9 @@ public class HandleDescriptorManger {
                         throw new IllegalStateException();
                     }
                 } else {
-                    //if (LibC.INSTANCE.close((int) handleDescriptor) != 0) {
-                    //    throw new IllegalStateException();
-                    //}
+                    if (LibC.INSTANCE.close((int) handleDescriptor) != 0) {
+                       throw new IllegalStateException();
+                    }
                 }
             }
         }
