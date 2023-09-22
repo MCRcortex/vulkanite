@@ -145,13 +145,13 @@ public class MemoryManager {
                         if (!Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(tracked.desc.handle)))) {
                             int error = Kernel32.INSTANCE.GetLastError();
                             System.err.println("STATE MIGHT BE BROKEN! Failed to close handle: " + error);
-                            throw new IllegalStateException();
+                            // throw new IllegalStateException();
                         }
                     } else {
                         int code = 0;
                         if ((code = LibC.INSTANCE.close((int) tracked.desc.handle)) != 0) {
                             System.err.println("STATE MIGHT BE BROKEN! Failed to close FD: " + code);
-                            throw new IllegalStateException();
+                            // throw new IllegalStateException();
                         }
                     }
                     MEMORY_TO_HANDLES.remove(memory);
