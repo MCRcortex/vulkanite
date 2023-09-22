@@ -14,9 +14,9 @@ public class VGBuffer extends VBuffer {
 
     @Override
     public void free() {
-        MemoryManager.ExternalMemoryTracker.release(this.vkMemory);
         glDeleteBuffers(glId);
         _CHECK_GL_ERROR_();
+        MemoryManager.ExternalMemoryTracker.release(this.vkMemory);
         super.free();
     }
 }

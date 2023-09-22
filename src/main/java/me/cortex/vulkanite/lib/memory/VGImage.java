@@ -16,9 +16,9 @@ public class VGImage extends VImage {
     }
 
     public void free() {      
-        MemoryManager.ExternalMemoryTracker.release(this.vkMemory);
         glDeleteTextures(glId);
         _CHECK_GL_ERROR_();
+        MemoryManager.ExternalMemoryTracker.release(this.vkMemory);
         super.free();
     }
 }

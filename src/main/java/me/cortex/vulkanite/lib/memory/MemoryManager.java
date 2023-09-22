@@ -105,9 +105,17 @@ public class MemoryManager {
                         glImportMemoryWin32HandleEXT(newMemoryObject,
                                 memorySize,
                                 GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, nativeHandle);
+                        _CHECK_GL_ERROR_();
                     } else {
                         glImportMemoryFdEXT(newMemoryObject, memorySize,
                                 GL_HANDLE_TYPE_OPAQUE_FD_EXT, (int) nativeHandle);
+                        _CHECK_GL_ERROR_();
+                    }
+
+                    if (memorySize > sharedBlockSize) {
+                        // Section 6.2 of the OpenGL 4.5 spec
+                        glMemoryObjectParameteriEXT(newMemoryObject, GL_DEDICATED_MEMORY_OBJECT_EXT, GL_TRUE);
+                        _CHECK_GL_ERROR_();
                     }
 
                     if (newMemoryObject == 0)
@@ -131,21 +139,22 @@ public class MemoryManager {
                     throw new IllegalStateException();
                 }
                 if (tracked.refCount == 1) {
-                    MEMORY_TO_HANDLES.remove(memory);
                     glDeleteMemoryObjectsEXT(tracked.desc.glMemoryObj);
+                    _CHECK_GL_ERROR_();
                     if (Vulkanite.IS_WINDOWS) {
                         if (!Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(tracked.desc.handle)))) {
                             int error = Kernel32.INSTANCE.GetLastError();
-                            System.err.println("Failed to close handle: " + error);
+                            System.err.println("STATE MIGHT BE BROKEN! Failed to close handle: " + error);
                             throw new IllegalStateException();
                         }
                     } else {
                         int code = 0;
                         if ((code = LibC.INSTANCE.close((int) tracked.desc.handle)) != 0) {
-                            System.err.println("Failed to close FD: " + code);
+                            System.err.println("STATE MIGHT BE BROKEN! Failed to close FD: " + code);
                             throw new IllegalStateException();
                         }
                     }
+                    MEMORY_TO_HANDLES.remove(memory);
                 } else {
                     MEMORY_TO_HANDLES.put(memory, new HandleDescriptorTracked(tracked.desc, tracked.refCount - 1));
                 }
