@@ -61,7 +61,10 @@ public class VulkanPipeline {
     private VDescriptorSetLayout commonLayout;
     private VDescriptorSetLayout customtexLayout;
     private VDescriptorSetLayout storageBufferLayout;
-    private VDescriptorPool descriptors;
+
+    private VDescriptorPool commonDescriptorPool;
+    private VDescriptorPool customtexDescriptorPool;
+    private VDescriptorPool storageBufferDescriptorPool;
 
     private final VSampler sampler;
     private final VSampler ctexSampler;
@@ -104,7 +107,7 @@ public class VulkanPipeline {
                 PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
                 return ((IVGImage)holder.getSpecularTexture()).getVGImage();
             });
-            this.placeholderImage = ctx.memory.createImage2D(1, 1, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            this.placeholderImage = ctx.memory.createImage2D(4, 4, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             this.placeholderImageView = new VImageView(ctx, placeholderImage);
 
             try (var stack = stackPush()) {
@@ -146,14 +149,13 @@ public class VulkanPipeline {
 
         try {
             commonLayout = new DescriptorSetLayoutBuilder()
-                    .binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)// camera data
-                    .binding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)// funni acceleration buffer
-                    .binding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL)// funni buffer buffer
-                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
-                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
-                    .binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
+                    .binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)// camera data
+                    .binding(1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)// funni acceleration buffer
+                    .binding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
+                    .binding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
+                    .binding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
                     // Reordered these so output texture is last... this means you can dynamically add more output textures without messing other ids
-                    .binding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)// output texture
+                    .binding(6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)// output texture
                     .build(ctx);
 
             DescriptorSetLayoutBuilder ctexLayoutBuilder = new DescriptorSetLayoutBuilder();
@@ -170,19 +172,21 @@ public class VulkanPipeline {
 
             storageBufferLayout = ssboLayoutBuilder.build(ctx);
 
-            // Using commonLayout.types is good enough because both VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER and VK_DESCRIPTOR_TYPE_STORAGE_BUFFER are used there already...
             //TODO: use frameahead count instead of just... 10
-            descriptors = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, commonLayout.types);
-            descriptors.allocateSets(new VDescriptorSetLayout[]{
-                    commonLayout,
-                    customtexLayout,
-                    storageBufferLayout
-            });
+            commonDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, commonLayout.types);
+            commonDescriptorPool.allocateSets(commonLayout);
+
+            customtexDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, customtexLayout.types);
+            customtexDescriptorPool.allocateSets(customtexLayout);
+
+            storageBufferDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, storageBufferLayout.types);
+            storageBufferDescriptorPool.allocateSets(storageBufferLayout);
 
             raytracePipelines = new VRaytracePipeline[passes.length];
             for (int i = 0; i < passes.length; i++) {
                 var builder = new RaytracePipelineBuilder()
                         .addLayout(commonLayout)
+                        .addLayout(accelerationManager.getGeometryLayout())
                         .addLayout(customtexLayout)
                         .addLayout(storageBufferLayout);
                 passes[i].apply(builder);
@@ -265,15 +269,14 @@ public class VulkanPipeline {
             uboBuffer.unmap();
             uboBuffer.flush();
 
-            long commonSet = descriptors.get(0);
-            long ctexSet = descriptors.get(1);
-            long ssboSet = descriptors.get(2);
+            long commonSet = commonDescriptorPool.get(fidx);
+            long ctexSet = customtexDescriptorPool.get(fidx);
+            long ssboSet = storageBufferDescriptorPool.get(fidx);
 
             var updater = new DescriptorUpdateBuilder(ctx, 7, placeholderImageView)
                     .set(commonSet)
                     .uniform(0, uboBuffer)
                     .acceleration(1, tlas)
-                    .buffer(2, accelerationManager.getReferenceBuffer())
                     .imageSampler(3, blockAtlasView.getView(), sampler)
                     .imageSampler(4, blockAtlasNormalView.getView(), sampler)
                     .imageSampler(5, blockAtlasSpecularView.getView(), sampler)
@@ -320,7 +323,7 @@ public class VulkanPipeline {
 
             for (var pipeline : raytracePipelines) {
                 pipeline.bind(cmd);
-                pipeline.bindDSet(cmd, new long[]{commonSet, ctexSet, ssboSet});
+                pipeline.bindDSet(cmd, commonSet, accelerationManager.getGeometrySet(), ctexSet, ssboSet);
                 pipeline.trace(cmd, outImg.width, outImg.height, 1);
             }
 
@@ -359,7 +362,9 @@ public class VulkanPipeline {
         commonLayout.free();
         customtexLayout.free();
         storageBufferLayout.free();
-        descriptors.free();
+        commonDescriptorPool.free();
+        customtexDescriptorPool.free();
+        storageBufferDescriptorPool.free();
         ctx.sync.checkFences();
         singleUsePool.doReleases();
         singleUsePool.free();
