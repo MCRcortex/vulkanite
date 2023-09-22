@@ -21,6 +21,8 @@ import static org.lwjgl.opengl.EXTMemoryObjectFD.glImportMemoryFdEXT;
 import static org.lwjgl.opengl.EXTMemoryObjectWin32.glImportMemoryWin32HandleEXT;
 import static org.lwjgl.opengl.EXTSemaphoreWin32.GL_HANDLE_TYPE_OPAQUE_WIN32_EXT;
 import static org.lwjgl.opengl.GL11C.*;
+import static org.lwjgl.opengl.GL12.GL_TEXTURE_3D;
+import static org.lwjgl.opengl.GL12.GL_TEXTURE_WRAP_R;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.*;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
@@ -124,7 +126,19 @@ public class MemoryManager {
         }
     }
 
-    public VGImage createSharedImage(int width, int height, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
+    public VGImage createSharedImage(int width, int height, int depth, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
+
+        int vkImageType = VK_IMAGE_TYPE_2D;
+        int glImageType = GL_TEXTURE_2D;
+
+        if(height == 1 && depth == 1) {
+            vkImageType = VK_IMAGE_TYPE_1D;
+            glImageType = GL_TEXTURE_1D;
+        } else if (height != 1 && depth != 1) {
+            vkImageType = VK_IMAGE_TYPE_3D;
+            glImageType = GL_TEXTURE_3D;
+        }
+
         try (var stack = stackPush()) {
             var createInfo = VkImageCreateInfo
                     .calloc(stack)
@@ -134,14 +148,14 @@ public class MemoryManager {
                             .sType$Default()
                             .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE))
                     .format(vkFormat)
-                    .imageType(VK_IMAGE_TYPE_2D)
+                    .imageType(vkImageType)
                     .mipLevels(mipLevels)
                     .arrayLayers(1)
                     .tiling(VK_IMAGE_TILING_OPTIMAL)
                     .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
                     .usage(usage)
                     .samples(VK_SAMPLE_COUNT_1_BIT);
-            createInfo.extent().width(width).height(height).depth(1);
+            createInfo.extent().width(width).height(height).depth(depth);
             var alloc = shared.alloc(createInfo,
                     VmaAllocationCreateInfo.calloc(stack)
                             .usage(VMA_MEMORY_USAGE_AUTO)
@@ -151,16 +165,34 @@ public class MemoryManager {
             int memoryObject = glCreateMemoryObjectsEXT();
             long handle = importMemory(memoryObject, alloc);
 
-            int glId = glCreateTextures(GL_TEXTURE_2D);
+            int glId = glCreateTextures(glImageType);
 
-            glTextureStorageMem2DEXT(glId, mipLevels, glFormat, width, height, memoryObject, alloc.ai.offset());
-            glTextureParameteri(glId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTextureParameteri(glId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTextureParameteri(glId, GL_TEXTURE_WRAP_S, GL_REPEAT);
-            glTextureParameteri(glId, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            switch(glImageType) {
+                case GL_TEXTURE_1D:
+                    glTextureStorageMem1DEXT(glId, mipLevels, glFormat, width, memoryObject, alloc.ai.offset());
+                    glTextureParameteri(glId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTextureParameteri(glId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTextureParameteri(glId, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    break;
+                case GL_TEXTURE_2D:
+                    glTextureStorageMem2DEXT(glId, mipLevels, glFormat, width, height, memoryObject, alloc.ai.offset());
+                    glTextureParameteri(glId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTextureParameteri(glId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTextureParameteri(glId, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    glTextureParameteri(glId, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                    break;
+                case GL_TEXTURE_3D:
+                    glTextureStorageMem3DEXT(glId, mipLevels, glFormat, width, height, depth, memoryObject, alloc.ai.offset());
+                    glTextureParameteri(glId, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTextureParameteri(glId, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTextureParameteri(glId, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    glTextureParameteri(glId, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                    glTextureParameteri(glId, GL_TEXTURE_WRAP_R, GL_REPEAT);
+                    break;
+            }
 
             _CHECK_GL_ERROR_();
-            return new VGImage(alloc, width, height, mipLevels, vkFormat, glFormat, glId, memoryObject, handle);
+            return new VGImage(alloc, width, height, depth, mipLevels, vkFormat, glFormat, glId, memoryObject, handle);
         }
     }
 
@@ -183,7 +215,7 @@ public class MemoryManager {
         }
     }
 
-    public VImage creatImage2D(int width, int height, int mipLevels, int vkFormat, int usage, int properties) {
+    public VImage createImage2D(int width, int height, int mipLevels, int vkFormat, int usage, int properties) {
         try (var stack = stackPush()) {
             var alloc = allocator.alloc(0, VkImageCreateInfo
                 .calloc(stack)
@@ -200,7 +232,7 @@ public class MemoryManager {
                     VmaAllocationCreateInfo.calloc(stack)
                             .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-            return new VImage(alloc, width, height, mipLevels, vkFormat);
+            return new VImage(alloc, width, height, 1, mipLevels, vkFormat);
         }
     }
 
