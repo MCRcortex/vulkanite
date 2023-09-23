@@ -100,10 +100,6 @@ public class VmaAllocator {
         }
     }
 
-    // TODO: FIXME: find a better way to synchronize this, since it needs to be very
-    // fast
-    private static final Lock ALLOCATOR_LOCK = new ReentrantLock();
-
     // NOTE: SHOULD ONLY BE USED TO ALLOCATE SHARED MEMORY AND STUFF, not
     // recommended
     SharedBufferAllocation allocShared(VkBufferCreateInfo bufferCreateInfo,
@@ -125,17 +121,13 @@ public class VmaAllocator {
 
             long allocation = 0;
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-            ALLOCATOR_LOCK.lock();
-            try {
-                PointerBuffer pAllocation = stack.mallocPointer(1);
-                _CHECK_(
-                        vmaAllocateMemoryForBuffer(allocator, buffer, allocationCreateInfo, pAllocation, vai),
-                        "Failed to allocate memory for buffer");
-                allocation = pAllocation.get(0);
-                _CHECK_(vmaBindBufferMemory(allocator, allocation, buffer), "failed to bind buffer memory");
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+
+            PointerBuffer pAllocation = stack.mallocPointer(1);
+            _CHECK_(
+                    vmaAllocateMemoryForBuffer(allocator, buffer, allocationCreateInfo, pAllocation, vai),
+                    "Failed to allocate memory for buffer");
+            allocation = pAllocation.get(0);
+            _CHECK_(vmaBindBufferMemory(allocator, allocation, buffer), "failed to bind buffer memory");
 
             boolean hasDeviceAddress = ((bufferCreateInfo.usage() & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) > 0);
             return new SharedBufferAllocation(buffer, allocation, vai, hasDeviceAddress);
@@ -153,20 +145,15 @@ public class VmaAllocator {
             LongBuffer pb = stack.mallocLong(1);
             PointerBuffer pa = stack.mallocPointer(1);
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-            ALLOCATOR_LOCK.lock();
-            try {
-                _CHECK_(
-                        vmaCreateBufferWithAlignment(allocator,
-                                bufferCreateInfo,
-                                allocationCreateInfo.pool(pool),
-                                alignment,
-                                pb,
-                                pa,
-                                vai),
-                        "Failed to allocate buffer");
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+            _CHECK_(
+                    vmaCreateBufferWithAlignment(allocator,
+                            bufferCreateInfo,
+                            allocationCreateInfo.pool(pool),
+                            alignment,
+                            pb,
+                            pa,
+                            vai),
+                    "Failed to allocate buffer");
             return new BufferAllocation(pb.get(0), pa.get(0), vai,
                     (bufferCreateInfo.usage() & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
         }
@@ -190,17 +177,12 @@ public class VmaAllocator {
 
             long allocation = 0;
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
-            ALLOCATOR_LOCK.lock();
-            try {
-                PointerBuffer pAllocation = stack.mallocPointer(1);
-                _CHECK_(
-                        vmaAllocateMemoryForImage(allocator, image, allocationCreateInfo, pAllocation, vai),
-                        "Failed to allocate memory for image");
-                allocation = pAllocation.get(0);
-                _CHECK_(vmaBindImageMemory(allocator, allocation, image), "failed to bind image memory");
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+            PointerBuffer pAllocation = stack.mallocPointer(1);
+            _CHECK_(
+                    vmaAllocateMemoryForImage(allocator, image, allocationCreateInfo, pAllocation, vai),
+                    "Failed to allocate memory for image");
+            allocation = pAllocation.get(0);
+            _CHECK_(vmaBindImageMemory(allocator, allocation, image), "failed to bind image memory");
 
             return new SharedImageAllocation(image, allocation, vai);
         }
@@ -266,13 +248,8 @@ public class VmaAllocator {
         @Override
         public void free() {
             // vkFreeMemory();
-            ALLOCATOR_LOCK.lock();
-            try {
-                vmaDestroyBuffer(allocator, buffer, allocation);
-                super.free();
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+            vmaDestroyBuffer(allocator, buffer, allocation);
+            super.free();
         }
 
         public VkDevice getDevice() {
@@ -281,25 +258,15 @@ public class VmaAllocator {
 
         // TODO: Maybe put the following 3 in VBuffer
         public long map() {
-            ALLOCATOR_LOCK.lock();
-            try {
-                try (var stack = stackPush()) {
-                    PointerBuffer res = stack.callocPointer(1);
-                    _CHECK_(vmaMapMemory(allocator, allocation, res));
-                    return res.get(0);
-                }
-            } finally {
-                ALLOCATOR_LOCK.unlock();
+            try (var stack = stackPush()) {
+                PointerBuffer res = stack.callocPointer(1);
+                _CHECK_(vmaMapMemory(allocator, allocation, res));
+                return res.get(0);
             }
         }
 
         public void unmap() {
-            ALLOCATOR_LOCK.lock();
-            try {
-                vmaUnmapMemory(allocator, allocation);
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+            vmaUnmapMemory(allocator, allocation);
         }
 
         public void flush(long offset, long size) {
@@ -314,12 +281,7 @@ public class VmaAllocator {
                  * .size(size)
                  * .offset(ai.offset()+offset)));
                  */
-                ALLOCATOR_LOCK.lock();
-                try {
-                    vmaFlushAllocation(allocator, allocation, offset, size);
-                } finally {
-                    ALLOCATOR_LOCK.unlock();
-                }
+                vmaFlushAllocation(allocator, allocation, offset, size);
             }
         }
 
@@ -332,15 +294,10 @@ public class VmaAllocator {
 
         @Override
         public void free() {
-            ALLOCATOR_LOCK.lock();
-            try {
-                vkDestroyBuffer(device, buffer, null);
-                vmaFreeMemory(allocator, allocation);
-                free0();
-                ai.free();
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+            vkDestroyBuffer(device, buffer, null);
+            vmaFreeMemory(allocator, allocation);
+            free0();
+            ai.free();
         }
     }
 
@@ -355,13 +312,8 @@ public class VmaAllocator {
         @Override
         public void free() {
             // vkFreeMemory();
-            ALLOCATOR_LOCK.lock();
-            try {
-                vmaDestroyImage(allocator, image, allocation);
-                super.free();
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+            vmaDestroyImage(allocator, image, allocation);
+            super.free();
         }
     }
 
@@ -373,15 +325,10 @@ public class VmaAllocator {
         @Override
         public void free() {
             // vkFreeMemory();
-            ALLOCATOR_LOCK.lock();
-            try {
-                vkDestroyImage(device, image, null);
-                vmaFreeMemory(allocator, allocation);
-                free0();
-                ai.free();
-            } finally {
-                ALLOCATOR_LOCK.unlock();
-            }
+            vkDestroyImage(device, image, null);
+            vmaFreeMemory(allocator, allocation);
+            free0();
+            ai.free();
         }
     }
 
