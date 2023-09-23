@@ -111,6 +111,7 @@ public class VmaAllocator {
 
             var memReq = VkMemoryRequirements.calloc(stack);
             vkGetBufferMemoryRequirements(device, buffer, memReq);
+            allocationCreateInfo.memoryTypeBits(memReq.memoryTypeBits());
 
             if (memReq.size() > sharedBlockSize) {
                 allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
@@ -130,7 +131,8 @@ public class VmaAllocator {
             _CHECK_(vmaBindBufferMemory(allocator, allocation, buffer), "failed to bind buffer memory");
 
             boolean hasDeviceAddress = ((bufferCreateInfo.usage() & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) > 0);
-            return new SharedBufferAllocation(buffer, allocation, vai, hasDeviceAddress);
+            return new SharedBufferAllocation(buffer, allocation, vai, hasDeviceAddress,
+                    memReq.size() > sharedBlockSize);
         }
     }
 
@@ -168,12 +170,9 @@ public class VmaAllocator {
             var memReq = VkMemoryRequirements.calloc(stack);
             vkGetImageMemoryRequirements(device, image, memReq);
 
-            if (memReq.size() > sharedBlockSize) {
-                allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-                allocationCreateInfo.pool(sharedDedicatedPool);
-            } else {
-                allocationCreateInfo.pool(sharedPool);
-            }
+            allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT)
+                    .pool(sharedDedicatedPool)
+                    .memoryTypeBits(memReq.memoryTypeBits());
 
             long allocation = 0;
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
@@ -184,7 +183,7 @@ public class VmaAllocator {
             allocation = pAllocation.get(0);
             _CHECK_(vmaBindImageMemory(allocator, allocation, image), "failed to bind image memory");
 
-            return new SharedImageAllocation(image, allocation, vai);
+            return new SharedImageAllocation(image, allocation, vai, true);
         }
     }
 
@@ -288,8 +287,12 @@ public class VmaAllocator {
     }
 
     public class SharedBufferAllocation extends BufferAllocation {
-        public SharedBufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress) {
+        private final boolean dedicated;
+
+        public SharedBufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress,
+                boolean dedicated) {
             super(buffer, allocation, info, hasDeviceAddress);
+            this.dedicated = dedicated;
         }
 
         @Override
@@ -298,6 +301,10 @@ public class VmaAllocator {
             vmaFreeMemory(allocator, allocation);
             free0();
             ai.free();
+        }
+
+        boolean isDedicated() {
+            return dedicated;
         }
     }
 
@@ -318,8 +325,11 @@ public class VmaAllocator {
     }
 
     public class SharedImageAllocation extends ImageAllocation {
-        public SharedImageAllocation(long image, long allocation, VmaAllocationInfo info) {
+        private final boolean dedicated;
+
+        public SharedImageAllocation(long image, long allocation, VmaAllocationInfo info, boolean dedicated) {
             super(image, allocation, info);
+            this.dedicated = dedicated;
         }
 
         @Override
@@ -329,6 +339,10 @@ public class VmaAllocator {
             vmaFreeMemory(allocator, allocation);
             free0();
             ai.free();
+        }
+
+        boolean isDedicated() {
+            return dedicated;
         }
     }
 

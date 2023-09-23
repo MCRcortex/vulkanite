@@ -22,6 +22,7 @@ import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
@@ -336,8 +337,8 @@ public class AccelerationTLASManager {
         private record DescUpdateJob(int binding, int dstArrayElement, List<VBuffer> buffers) {}
         private record ArenaDeallocJob(int index, int count, List<VBuffer> geometryBuffers) {}
 
-        private final Deque<DescUpdateJob> descUpdateJobs = new ArrayDeque<>();
-        private final Deque<ArenaDeallocJob> arenaDeallocJobs = new ArrayDeque<>();
+        private final ConcurrentLinkedDeque<DescUpdateJob> descUpdateJobs = new ConcurrentLinkedDeque<>();
+        private final ConcurrentLinkedDeque<ArenaDeallocJob> arenaDeallocJobs = new ConcurrentLinkedDeque<>();
         private final Deque<VDescriptorPool> descPoolsToRelease = new ArrayDeque<>();
 
         public void resizeBindlessSet(int newSize, VFence fence) {
