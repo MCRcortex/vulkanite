@@ -1,6 +1,8 @@
 package me.cortex.vulkanite.lib.cmd;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+
+import io.netty.util.internal.shaded.org.jctools.queues.MessagePassingQueue.Consumer;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
@@ -18,6 +20,8 @@ public class CommandManager {
     private final VkDevice device;
     private final VkQueue[] queues;
 
+    private final VCommandPool singleUsePool;
+
     public CommandManager(VkDevice device, int queues) {
         this.device = device;
         this.queues = new VkQueue[queues];
@@ -29,6 +33,7 @@ public class CommandManager {
                 this.queues[i] = new VkQueue(pQ.get(0), device);
             }
         }
+        this.singleUsePool = createSingleUsePool();
     }
 
     public VCommandPool createSingleUsePool() {
@@ -56,6 +61,14 @@ public class CommandManager {
             vkQueueWaitIdle(queues[queueId]);
             cmdBuff.freeInternal();
         }
+    }
+
+    public void executeWait(Consumer<VCmdBuff> cmdbuf) {
+        var cmd = singleUsePool.createCommandBuffer();
+        cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+        cmdbuf.accept(cmd);
+        cmd.end();
+        submitOnceAndWait(0, cmd);
     }
 
     //TODO: if its a single use command buffer, automatically add the required fences and stuff to free the command buffer once its done

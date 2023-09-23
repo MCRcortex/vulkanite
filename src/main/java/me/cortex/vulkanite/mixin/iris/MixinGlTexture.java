@@ -52,6 +52,10 @@ public abstract class MixinGlTexture extends MixinGlResource implements IVGImage
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
 
+        Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {
+            cmdbuf.encodeImageTransition(sharedImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+        });
+
         this.setGlId(sharedImage.glId);
 
         return sharedImage.glId;
