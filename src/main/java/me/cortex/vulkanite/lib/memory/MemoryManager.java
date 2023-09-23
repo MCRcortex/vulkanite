@@ -35,13 +35,12 @@ import static org.lwjgl.vulkan.KHRExternalMemoryWin32.vkGetMemoryWin32HandleKHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
 public class MemoryManager {
     private static final int EXTERNAL_MEMORY_HANDLE_TYPE = Vulkanite.IS_WINDOWS?VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
     private final VkDevice device;
     private final VmaAllocator allocator;
-    private final VmaAllocator.MemoryPool sharedBlocked;
-    private final VmaAllocator.MemoryPool sharedDedicated;
     private final boolean hasDeviceAddresses;
 
     private static final long sharedBlockSize = 64L << 20L; // 64 MB
@@ -49,17 +48,7 @@ public class MemoryManager {
     public MemoryManager(VkDevice device, boolean hasDeviceAddresses) {
         this.device = device;
         this.hasDeviceAddresses = hasDeviceAddresses;
-        allocator = new VmaAllocator(device, hasDeviceAddresses);
-        //Note: this technically creates a memory leak, since we never free it, however
-        // memory manager should never be created more than once per application, so it should bo ok
-        sharedBlocked = allocator.createPool(sharedBlockSize,
-                VkExportMemoryAllocateInfo.calloc()
-                        .sType$Default()
-                        .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
-        sharedDedicated = allocator.createPool(0,
-                VkExportMemoryAllocateInfo.calloc()
-                        .sType$Default()
-                        .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
+        allocator = new VmaAllocator(device, this.hasDeviceAddresses, sharedBlockSize, EXTERNAL_MEMORY_HANDLE_TYPE);
     }
 
     public class ExternalMemoryTracker {
@@ -163,12 +152,7 @@ public class MemoryManager {
     };
 
     public VGBuffer createSharedBuffer(long size, int usage, int properties) {
-        return createSharedBuffer(size, usage, properties, 0);
-    }
-    public VGBuffer createSharedBuffer(long size, int usage, int properties, int alignment) {
         try (var stack = stackPush()) {
-            VmaAllocator.BufferAllocation alloc = null;
-
             var bufferCreateInfo = VkBufferCreateInfo
                             .calloc(stack)
                             .sType$Default()
@@ -177,16 +161,11 @@ public class MemoryManager {
                             .pNext(VkExternalMemoryBufferCreateInfo.calloc(stack)
                                     .sType$Default()
                                     .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
+
             var allocationCreateInfo = VmaAllocationCreateInfo.calloc(stack)
-                            .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(properties);
             
-            if (size > sharedBlockSize) {
-                allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-                alloc = sharedDedicated.alloc(bufferCreateInfo, allocationCreateInfo, alignment);
-            } else {
-                alloc = sharedBlocked.alloc(bufferCreateInfo, allocationCreateInfo, alignment);
-            }
+            var alloc = allocator.allocShared(bufferCreateInfo, allocationCreateInfo);
 
             int memoryObject = ExternalMemoryTracker.acquire(alloc, device);
 
@@ -229,17 +208,9 @@ public class MemoryManager {
             createInfo.extent().width(width).height(height).depth(depth);
 
             var allocInfo = VmaAllocationCreateInfo.calloc(stack)
-                            .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(properties);
 
-            VmaAllocator.ImageAllocation alloc = null;
-
-            try {
-                alloc = sharedBlocked.alloc(createInfo, allocInfo);
-            } catch(AssertionError e) {
-                allocInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
-                alloc = sharedDedicated.alloc(createInfo, allocInfo);
-            }
+            var alloc = allocator.allocShared(createInfo, allocInfo);
 
             int memoryObject = ExternalMemoryTracker.acquire(alloc, device);
 

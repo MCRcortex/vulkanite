@@ -130,7 +130,7 @@ public class AccelerationTLASManager {
 
             var buildInfo = VkAccelerationStructureBuildGeometryInfoKHR.calloc(1, stack)
                     .sType$Default()
-                    .mode(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)//TODO: explore using VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR to speedup build times
+                    .mode(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
                     .type(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
                     .pGeometries(geometries)
                     .geometryCount(geometries.capacity());
@@ -453,6 +453,12 @@ public class AccelerationTLASManager {
             structuresToRelease.add(holder.structure);
 
             free(holder.id);
+
+            for (var job : descUpdateJobs) {
+                if (job.buffers == holder.geometryBuffers) {
+                    descUpdateJobs.remove(job);
+                }
+            }
 
             if (holder.geometryIndex != -1) {
                 arena.free(holder.geometryIndex, holder.geometryBuffers.size());

@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.memory;
 
 import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -9,6 +10,7 @@ import org.lwjgl.util.vma.*;
 import org.lwjgl.vulkan.*;
 
 import java.lang.ref.Cleaner;
+import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -20,15 +22,24 @@ import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.*;
 import static org.lwjgl.vulkan.VK11.VK_API_VERSION_1_1;
 
-//TODO: make multiple pools for allocations
 public class VmaAllocator {
     private final VkDevice device;
     private final long allocator;
     private final boolean hasDeviceAddresses;
-    public VmaAllocator(VkDevice device, boolean enableDeviceAddresses) {
+
+    private final long sharedPool;
+    private final long sharedDedicatedPool;
+
+    private final long sharedBlockSize;
+
+    private final VkExportMemoryAllocateInfo exportMemoryAllocateInfo;
+
+    public VmaAllocator(VkDevice device, boolean enableDeviceAddresses, long sharedBlockSize, int sharedHandleType) {
         this.device = device;
         this.hasDeviceAddresses = enableDeviceAddresses;
-        try (var stack = stackPush()){
+        this.sharedBlockSize = sharedBlockSize;
+
+        try (var stack = stackPush()) {
             VmaAllocatorCreateInfo allocatorCreateInfo = VmaAllocatorCreateInfo.calloc(stack)
                     .instance(device.getPhysicalDevice().getInstance())
                     .physicalDevice(device.getPhysicalDevice())
@@ -37,19 +48,7 @@ public class VmaAllocator {
                             .calloc(stack)
                             .set(device.getPhysicalDevice().getInstance(), device))
                     .vulkanApiVersion(VK_API_VERSION_1_2)
-                    .flags(enableDeviceAddresses?VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT:0);
-
-            /*
-            VkPhysicalDeviceMemoryProperties memoryProperties = VkPhysicalDeviceMemoryProperties.calloc(stack);
-            vkGetPhysicalDeviceMemoryProperties(device.device.getPhysicalDevice(), memoryProperties);
-
-            IntBuffer handleTypes = MemoryUtil.memAllocInt(memoryProperties.memoryTypeCount());
-            for (int i = 0; i < handleTypes.capacity(); i++) {
-                handleTypes.put(i, VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
-            }
-            allocatorCreateInfo.pTypeExternalMemoryHandleTypes(handleTypes);
-             */
-
+                    .flags(enableDeviceAddresses ? VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT : 0);
 
             PointerBuffer pAllocator = stack.pointers(0);
             if (vmaCreateAllocator(allocatorCreateInfo, pAllocator) != VK_SUCCESS) {
@@ -57,46 +56,99 @@ public class VmaAllocator {
             }
 
             allocator = pAllocator.get(0);
+
+            int sharedPoolMemoryTypeIndex = -1;
+
+            {
+                var bufferCreateInfo = VkBufferCreateInfo.calloc(stack)
+                        .sType$Default()
+                        .size(sharedBlockSize)
+                        .usage(VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                                | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
+                        .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
+                var allocationCreateInfo = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_UNKNOWN)
+                        .requiredFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                IntBuffer pMemoryTypeIndex = stack.callocInt(1);
+                if (vmaFindMemoryTypeIndexForBufferInfo(allocator, bufferCreateInfo, allocationCreateInfo,
+                        pMemoryTypeIndex) != VK_SUCCESS) {
+                    throw new RuntimeException("Failed to find memory type index for shared pool");
+                }
+                sharedPoolMemoryTypeIndex = pMemoryTypeIndex.get(0);
+            }
+
+            // This object is leaked, yes...
+            // But we should only have one allocator anyways
+            exportMemoryAllocateInfo = VkExportMemoryAllocateInfo.calloc()
+                    .sType$Default()
+                    .pNext(0)
+                    .handleTypes(sharedHandleType);
+
+            VmaPoolCreateInfo pci = VmaPoolCreateInfo.calloc(stack)
+                    .memoryTypeIndex(sharedPoolMemoryTypeIndex)
+                    .pMemoryAllocateNext(exportMemoryAllocateInfo.address());
+            PointerBuffer pb = stack.callocPointer(1);
+            if (vmaCreatePool(allocator, pci, pb) != VK_SUCCESS) {
+                throw new RuntimeException("Failed to create sharedDedicatedPool");
+            }
+            sharedDedicatedPool = pb.get(0);
+
+            pci.blockSize(sharedBlockSize);
+            if (vmaCreatePool(allocator, pci, pb) != VK_SUCCESS) {
+                throw new RuntimeException("Failed to create sharedPool");
+            }
+            sharedPool = pb.get(0);
         }
     }
 
-    public MemoryPool createPool(long blockSize) {
-        return new MemoryPool(blockSize, 0);
-    }
-
-    public MemoryPool createPool(long blockSize, Struct chain) {
-        return new MemoryPool(blockSize, chain.address());
-    }
-
-
-    //TODO: FIXME: find a better way to synchronize this, since it needs to be very fast
+    // TODO: FIXME: find a better way to synchronize this, since it needs to be very
+    // fast
     private static final Lock ALLOCATOR_LOCK = new ReentrantLock();
 
-    //NOTE: SHOULD ONLY BE USED TO ALLOCATE SHARED MEMORY AND STUFF, not recommended
-    BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+    // NOTE: SHOULD ONLY BE USED TO ALLOCATE SHARED MEMORY AND STUFF, not
+    // recommended
+    SharedBufferAllocation allocShared(VkBufferCreateInfo bufferCreateInfo,
+            VmaAllocationCreateInfo allocationCreateInfo) {
         try (var stack = stackPush()) {
-            LongBuffer pb = stack.mallocLong(1);
-            PointerBuffer pa = stack.mallocPointer(1);
+            LongBuffer pb = stack.callocLong(1);
+            _CHECK_(vkCreateBuffer(device, bufferCreateInfo, null, pb), "Failed to create VkBuffer");
+            long buffer = pb.get(0);
+
+            var memReq = VkMemoryRequirements.calloc(stack);
+            vkGetBufferMemoryRequirements(device, buffer, memReq);
+
+            if (memReq.size() > sharedBlockSize) {
+                allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+                allocationCreateInfo.pool(sharedDedicatedPool);
+            } else {
+                allocationCreateInfo.pool(sharedPool);
+            }
+
+            long allocation = 0;
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
             ALLOCATOR_LOCK.lock();
             try {
+                PointerBuffer pAllocation = stack.mallocPointer(1);
                 _CHECK_(
-                        vmaCreateBuffer(allocator,
-                                bufferCreateInfo,
-                                allocationCreateInfo.pool(pool),
-                                pb,
-                                pa,
-                                vai),
-                        "Failed to allocate buffer");
+                        vmaAllocateMemoryForBuffer(allocator, buffer, allocationCreateInfo, pAllocation, vai),
+                        "Failed to allocate memory for buffer");
+                allocation = pAllocation.get(0);
+                _CHECK_(vmaBindBufferMemory(allocator, allocation, buffer), "failed to bind buffer memory");
             } finally {
                 ALLOCATOR_LOCK.unlock();
             }
-            return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
+
+            boolean hasDeviceAddress = ((bufferCreateInfo.usage() & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) > 0);
+            return new SharedBufferAllocation(buffer, allocation, vai, hasDeviceAddress);
         }
     }
 
-    BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo, long alignment) {
-        if (alignment == 0) return alloc(pool, bufferCreateInfo, allocationCreateInfo);
+    BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo,
+            VmaAllocationCreateInfo allocationCreateInfo) {
+        return alloc(pool, bufferCreateInfo, allocationCreateInfo, 0);
+    }
+
+    BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo,
+            long alignment) {
         try (var stack = stackPush()) {
             LongBuffer pb = stack.mallocLong(1);
             PointerBuffer pa = stack.mallocPointer(1);
@@ -115,18 +167,53 @@ public class VmaAllocator {
             } finally {
                 ALLOCATOR_LOCK.unlock();
             }
-            return new BufferAllocation(pb.get(0), pa.get(0), vai, (bufferCreateInfo.usage()&VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
+            return new BufferAllocation(pb.get(0), pa.get(0), vai,
+                    (bufferCreateInfo.usage() & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0);
         }
     }
 
-    ImageAllocation alloc(long pool, VkImageCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+    SharedImageAllocation allocShared(VkImageCreateInfo imageCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+        try (var stack = stackPush()) {
+            LongBuffer pb = stack.callocLong(1);
+            _CHECK_(vkCreateImage(device, imageCreateInfo, null, pb), "Failed to create VkBuffer");
+            long image = pb.get(0);
+
+            var memReq = VkMemoryRequirements.calloc(stack);
+            vkGetImageMemoryRequirements(device, image, memReq);
+
+            if (memReq.size() > sharedBlockSize) {
+                allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+                allocationCreateInfo.pool(sharedDedicatedPool);
+            } else {
+                allocationCreateInfo.pool(sharedPool);
+            }
+
+            long allocation = 0;
+            VmaAllocationInfo vai = VmaAllocationInfo.calloc();
+            ALLOCATOR_LOCK.lock();
+            try {
+                PointerBuffer pAllocation = stack.mallocPointer(1);
+                _CHECK_(
+                        vmaAllocateMemoryForImage(allocator, image, allocationCreateInfo, pAllocation, vai),
+                        "Failed to allocate memory for image");
+                allocation = pAllocation.get(0);
+                _CHECK_(vmaBindImageMemory(allocator, allocation, image), "failed to bind image memory");
+            } finally {
+                ALLOCATOR_LOCK.unlock();
+            }
+
+            return new SharedImageAllocation(image, allocation, vai);
+        }
+    }
+
+    ImageAllocation alloc(long pool, VkImageCreateInfo imageCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
         try (var stack = stackPush()) {
             LongBuffer pi = stack.mallocLong(1);
             PointerBuffer pa = stack.mallocPointer(1);
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
             _CHECK_(
                     vmaCreateImage(allocator,
-                            bufferCreateInfo,
+                            imageCreateInfo,
                             allocationCreateInfo.pool(pool),
                             pi,
                             pa,
@@ -135,7 +222,6 @@ public class VmaAllocator {
             return new ImageAllocation(pi.get(0), pa.get(0), vai);
         }
     }
-
 
     public abstract static class Allocation extends TrackedResourceObject {
         public final VmaAllocationInfo ai;
@@ -149,7 +235,7 @@ public class VmaAllocator {
 
         public void free() {
             free0();
-            //vmaFreeMemory(allocator, allocation);
+            // vmaFreeMemory(allocator, allocation);
             ai.free();
         }
 
@@ -159,8 +245,9 @@ public class VmaAllocator {
     }
 
     public class BufferAllocation extends Allocation {
-        public final long buffer;
+        public long buffer = 0;
         public final long deviceAddress;
+
         public BufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress) {
             super(allocation, info);
             this.buffer = buffer;
@@ -178,7 +265,7 @@ public class VmaAllocator {
 
         @Override
         public void free() {
-            //vkFreeMemory();
+            // vkFreeMemory();
             ALLOCATOR_LOCK.lock();
             try {
                 vmaDestroyBuffer(allocator, buffer, allocation);
@@ -192,13 +279,13 @@ public class VmaAllocator {
             return device;
         }
 
-        //TODO: Maybe put the following 3 in VBuffer
+        // TODO: Maybe put the following 3 in VBuffer
         public long map() {
             ALLOCATOR_LOCK.lock();
             try {
-                try(var stack = stackPush()) {
+                try (var stack = stackPush()) {
                     PointerBuffer res = stack.callocPointer(1);
-                        _CHECK_(vmaMapMemory(allocator, allocation, res));
+                    _CHECK_(vmaMapMemory(allocator, allocation, res));
                     return res.get(0);
                 }
             } finally {
@@ -216,15 +303,17 @@ public class VmaAllocator {
         }
 
         public void flush(long offset, long size) {
-            //TODO: offset must be a multiple of VkPhysicalDeviceLimits::nonCoherentAtomSize
+            // TODO: offset must be a multiple of
+            // VkPhysicalDeviceLimits::nonCoherentAtomSize
             try (var stack = stackPush()) {
                 /*
-                _CHECK_(vkFlushMappedMemoryRanges(device, VkMappedMemoryRange
-                        .calloc(stack)
-                        .sType$Default()
-                        .memory(ai.deviceMemory())
-                        .size(size)
-                        .offset(ai.offset()+offset)));*/
+                 * _CHECK_(vkFlushMappedMemoryRanges(device, VkMappedMemoryRange
+                 * .calloc(stack)
+                 * .sType$Default()
+                 * .memory(ai.deviceMemory())
+                 * .size(size)
+                 * .offset(ai.offset()+offset)));
+                 */
                 ALLOCATOR_LOCK.lock();
                 try {
                     vmaFlushAllocation(allocator, allocation, offset, size);
@@ -236,8 +325,28 @@ public class VmaAllocator {
 
     }
 
+    public class SharedBufferAllocation extends BufferAllocation {
+        public SharedBufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress) {
+            super(buffer, allocation, info, hasDeviceAddress);
+        }
+
+        @Override
+        public void free() {
+            ALLOCATOR_LOCK.lock();
+            try {
+                vkDestroyBuffer(device, buffer, null);
+                vmaFreeMemory(allocator, allocation);
+                free0();
+                ai.free();
+            } finally {
+                ALLOCATOR_LOCK.unlock();
+            }
+        }
+    }
+
     public class ImageAllocation extends Allocation {
         public final long image;
+
         public ImageAllocation(long image, long allocation, VmaAllocationInfo info) {
             super(allocation, info);
             this.image = image;
@@ -245,7 +354,7 @@ public class VmaAllocator {
 
         @Override
         public void free() {
-            //vkFreeMemory();
+            // vkFreeMemory();
             ALLOCATOR_LOCK.lock();
             try {
                 vmaDestroyImage(allocator, image, allocation);
@@ -256,32 +365,25 @@ public class VmaAllocator {
         }
     }
 
-    public class MemoryPool {
-        private final long pool;
-        public MemoryPool(long blockSize, long pNext) {
-            try (var stack = stackPush()) {
-                VmaPoolCreateInfo pci = VmaPoolCreateInfo.calloc(stack)
-                    .blockSize(blockSize)
-                    .pMemoryAllocateNext(pNext);
-                PointerBuffer pb = stack.callocPointer(1);
-                if (vmaCreatePool(allocator, pci, pb) != VK_SUCCESS) {
-                    throw new RuntimeException("Failed to create memory pool");
-                }
-                pool = pb.get(0);
+    public class SharedImageAllocation extends ImageAllocation {
+        public SharedImageAllocation(long image, long allocation, VmaAllocationInfo info) {
+            super(image, allocation, info);
+        }
+
+        @Override
+        public void free() {
+            // vkFreeMemory();
+            ALLOCATOR_LOCK.lock();
+            try {
+                vkDestroyImage(device, image, null);
+                vmaFreeMemory(allocator, allocation);
+                free0();
+                ai.free();
+            } finally {
+                ALLOCATOR_LOCK.unlock();
             }
         }
-        BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
-            return VmaAllocator.this.alloc(pool, bufferCreateInfo, allocationCreateInfo);
-        }
-
-        BufferAllocation alloc(VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo, long alignment) {
-            return VmaAllocator.this.alloc(pool, bufferCreateInfo, allocationCreateInfo, alignment);
-        }
-        public ImageAllocation alloc(VkImageCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
-            return VmaAllocator.this.alloc(pool, bufferCreateInfo, allocationCreateInfo);
-        }
     }
-
 
     public String dumpJson(boolean detailed) {
         try (var stack = stackPush()) {
