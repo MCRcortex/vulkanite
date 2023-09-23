@@ -62,7 +62,7 @@ public class MemoryManager {
         private static final HashMap<Long, HandleDescriptorTracked> MEMORY_TO_HANDLES = new HashMap<>();
 
         // Get the GL memory associated with the given vulkan memory object
-        public static int acquire(VmaAllocator.Allocation allocation, VkDevice device) {
+        public static int acquire(VmaAllocator.Allocation allocation, VkDevice device, boolean dedicated) {
             synchronized (MEMORY_TO_HANDLES) {
                 long vkMemory = allocation.ai.deviceMemory();
                 if (!MEMORY_TO_HANDLES.containsKey(vkMemory)) {
@@ -90,7 +90,7 @@ public class MemoryManager {
 
                     int newMemoryObject = glCreateMemoryObjectsEXT();
                     // Everything larger than the shared block size must be dedicated allocation
-                    long memorySize = Long.max(allocation.ai.offset() + allocation.ai.size(), sharedBlockSize);
+                    long memorySize = dedicated ? (allocation.ai.offset() + allocation.ai.size()) : sharedBlockSize;
 
                     if (memorySize > sharedBlockSize) {
                         // Section 6.2 of the OpenGL 4.5 spec
@@ -169,7 +169,7 @@ public class MemoryManager {
             
             var alloc = allocator.allocShared(bufferCreateInfo, allocationCreateInfo);
 
-            int memoryObject = ExternalMemoryTracker.acquire(alloc, device);
+            int memoryObject = ExternalMemoryTracker.acquire(alloc, device, alloc.isDedicated());
 
             int glId = glCreateBuffers();
             glNamedBufferStorageMemEXT(glId, size, memoryObject, alloc.ai.offset());
@@ -214,7 +214,7 @@ public class MemoryManager {
 
             var alloc = allocator.allocShared(createInfo, allocInfo);
 
-            int memoryObject = ExternalMemoryTracker.acquire(alloc, device);
+            int memoryObject = ExternalMemoryTracker.acquire(alloc, device, alloc.isDedicated());
 
             int glId = glCreateTextures(glImageType);
 
