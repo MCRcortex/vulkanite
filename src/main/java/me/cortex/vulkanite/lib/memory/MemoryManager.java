@@ -5,12 +5,15 @@ import com.sun.jna.platform.linux.LibC;
 import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
 import me.cortex.vulkanite.client.Vulkanite;
+
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.util.vma.VmaAllocationCreateInfo;
 import org.lwjgl.vulkan.*;
 
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.util.HashMap;
+import java.util.function.Function;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_GL_ERROR_;
@@ -37,8 +40,11 @@ public class MemoryManager {
     private static final int EXTERNAL_MEMORY_HANDLE_TYPE = Vulkanite.IS_WINDOWS?VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
     private final VkDevice device;
     private final VmaAllocator allocator;
-    private final VmaAllocator.MemoryPool shared;
+    private final VmaAllocator.MemoryPool sharedBlocked;
+    private final VmaAllocator.MemoryPool sharedDedicated;
     private final boolean hasDeviceAddresses;
+
+    private static final long sharedBlockSize = 64L << 20L; // 64 MB
 
     public MemoryManager(VkDevice device, boolean hasDeviceAddresses) {
         this.device = device;
@@ -46,83 +52,148 @@ public class MemoryManager {
         allocator = new VmaAllocator(device, hasDeviceAddresses);
         //Note: this technically creates a memory leak, since we never free it, however
         // memory manager should never be created more than once per application, so it should bo ok
-        shared = allocator.createPool(VkExportMemoryAllocateInfo.calloc()
-                .sType$Default()
-                .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
+        sharedBlocked = allocator.createPool(sharedBlockSize,
+                VkExportMemoryAllocateInfo.calloc()
+                        .sType$Default()
+                        .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
+        sharedDedicated = allocator.createPool(0,
+                VkExportMemoryAllocateInfo.calloc()
+                        .sType$Default()
+                        .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
     }
 
-    private long importMemoryWin32(int memoryObject, VmaAllocator.Allocation allocation) {
-        try (var stack = stackPush()) {
-            PointerBuffer pb = stack.callocPointer(1);
-            _CHECK_(vkGetMemoryWin32HandleKHR(device, VkMemoryGetWin32HandleInfoKHR.calloc(stack)
-                    .sType$Default()
-                    .memory(allocation.ai.deviceMemory())
-                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT), pb));
-            long handle = pb.get(0);
-            if (handle == 0)
-                throw new IllegalStateException();
-            HandleDescriptorManger.add(handle);
-
-            //TODO: fixme: the `alloc.ai.size() + alloc.ai.offset()` is an extreamly ugly hack
-            // it is ment to extend over the entire size of vkMemoryObject, but im not sure how to obtain it
-            glImportMemoryWin32HandleEXT(memoryObject, allocation.ai.size() + allocation.ai.offset(), GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, handle);
-            return handle;
+    public class ExternalMemoryTracker {
+        public record HandleDescriptor(long handle, int glMemoryObj) {
         }
-    }
-
-    private int importMemoryFd(int memoryObject, VmaAllocator.Allocation allocation) {
-        try (var stack = stackPush()) {
-            IntBuffer pb = stack.callocInt(1);
-            _CHECK_(vkGetMemoryFdKHR(device, VkMemoryGetFdInfoKHR.calloc(stack)
-                    .sType$Default()
-                    .memory(allocation.ai.deviceMemory())
-                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT), pb));
-            int descriptor = pb.get(0);
-            if (descriptor == 0)
-                throw new IllegalStateException();
-            HandleDescriptorManger.add(descriptor);
-
-            //TODO: fixme: the `alloc.ai.size() + alloc.ai.offset()` is an extreamly ugly hack
-            // it is ment to extend over the entire size of vkMemoryObject, but im not sure how to obtain it
-            glImportMemoryFdEXT(memoryObject, allocation.ai.size() + allocation.ai.offset(), GL_HANDLE_TYPE_OPAQUE_FD_EXT, descriptor);
-            return descriptor;
+        public record HandleDescriptorTracked(HandleDescriptor desc, int refCount) {
         }
-    }
-    private long importMemory(int memoryObject, VmaAllocator.Allocation allocation) {
-        return Vulkanite.IS_WINDOWS?importMemoryWin32(memoryObject,allocation):importMemoryFd(memoryObject,allocation);
-    }
 
-    //TODO: there is a better way to do shared memory, a vk memory object from vma should be put into a single memory object
-    // then the memory object should be reused multiple times, this is the corrent and more efficent way
-    // that is, since `alloc.ai.deviceMemory()` is shared by multiple allocations, they can also share a single memory object
+        // Maps VK memory to {GL memory, Native handle} tuple & with refernce counting
+        private static final HashMap<Long, HandleDescriptorTracked> MEMORY_TO_HANDLES = new HashMap<>();
+
+        // Get the GL memory associated with the given vulkan memory object
+        public static int acquire(VmaAllocator.Allocation allocation, VkDevice device) {
+            synchronized (MEMORY_TO_HANDLES) {
+                long vkMemory = allocation.ai.deviceMemory();
+                if (!MEMORY_TO_HANDLES.containsKey(vkMemory)) {
+                    long nativeHandle = 0;
+                    try (var stack = stackPush()) {
+                        if (Vulkanite.IS_WINDOWS) {
+                            PointerBuffer pb = stack.callocPointer(1);
+                            _CHECK_(vkGetMemoryWin32HandleKHR(device, VkMemoryGetWin32HandleInfoKHR.calloc(stack)
+                                    .sType$Default()
+                                    .memory(vkMemory)
+                                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT), pb));
+                            nativeHandle = pb.get(0);
+                        } else {
+                            IntBuffer pb = stack.callocInt(1);
+                            _CHECK_(vkGetMemoryFdKHR(device, VkMemoryGetFdInfoKHR.calloc(stack)
+                                    .sType$Default()
+                                    .memory(vkMemory)
+                                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT), pb));
+                            nativeHandle = pb.get(0);
+                        }
+                    }
+
+                    if (nativeHandle == 0)
+                        throw new IllegalStateException();
+
+                    int newMemoryObject = glCreateMemoryObjectsEXT();
+                    // Everything larger than the shared block size must be dedicated allocation
+                    long memorySize = Long.max(allocation.ai.offset() + allocation.ai.size(), sharedBlockSize);
+                    if (Vulkanite.IS_WINDOWS) {
+                        glImportMemoryWin32HandleEXT(newMemoryObject,
+                                memorySize,
+                                GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, nativeHandle);
+                        _CHECK_GL_ERROR_();
+                    } else {
+                        glImportMemoryFdEXT(newMemoryObject, memorySize,
+                                GL_HANDLE_TYPE_OPAQUE_FD_EXT, (int) nativeHandle);
+                        _CHECK_GL_ERROR_();
+                    }
+
+                    if (memorySize > sharedBlockSize) {
+                        // Section 6.2 of the OpenGL 4.5 spec
+                        glMemoryObjectParameteriEXT(newMemoryObject, GL_DEDICATED_MEMORY_OBJECT_EXT, GL_TRUE);
+                        _CHECK_GL_ERROR_();
+                    }
+
+                    if (newMemoryObject == 0)
+                        throw new IllegalStateException();
+
+                    MEMORY_TO_HANDLES.put(vkMemory,
+                            new HandleDescriptorTracked(new HandleDescriptor(nativeHandle, newMemoryObject), 0));
+                }
+
+                var tracked = MEMORY_TO_HANDLES.get(vkMemory);
+                MEMORY_TO_HANDLES.put(vkMemory, new HandleDescriptorTracked(tracked.desc, tracked.refCount + 1));
+
+                return tracked.desc.glMemoryObj;
+            }
+        }
+
+        public static void release(long memory) {
+            synchronized (MEMORY_TO_HANDLES) {
+                var tracked = MEMORY_TO_HANDLES.get(memory);
+                if (tracked.refCount <= 0) {
+                    throw new IllegalStateException();
+                }
+                if (tracked.refCount == 1) {
+                    glDeleteMemoryObjectsEXT(tracked.desc.glMemoryObj);
+                    _CHECK_GL_ERROR_();
+                    if (Vulkanite.IS_WINDOWS) {
+                        if (!Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(tracked.desc.handle)))) {
+                            int error = Kernel32.INSTANCE.GetLastError();
+                            System.err.println("STATE MIGHT BE BROKEN! Failed to close handle: " + error);
+                            // throw new IllegalStateException();
+                        }
+                    } else {
+                        int code = 0;
+                        if ((code = LibC.INSTANCE.close((int) tracked.desc.handle)) != 0) {
+                            System.err.println("STATE MIGHT BE BROKEN! Failed to close FD: " + code);
+                            // throw new IllegalStateException();
+                        }
+                    }
+                    MEMORY_TO_HANDLES.remove(memory);
+                } else {
+                    MEMORY_TO_HANDLES.put(memory, new HandleDescriptorTracked(tracked.desc, tracked.refCount - 1));
+                }
+            }
+        }
+    };
+
     public VGBuffer createSharedBuffer(long size, int usage, int properties) {
         return createSharedBuffer(size, usage, properties, 0);
     }
     public VGBuffer createSharedBuffer(long size, int usage, int properties, int alignment) {
         try (var stack = stackPush()) {
-            var alloc = shared.alloc(VkBufferCreateInfo
+            VmaAllocator.BufferAllocation alloc = null;
+
+            var bufferCreateInfo = VkBufferCreateInfo
                             .calloc(stack)
                             .sType$Default()
                             .size(size)
                             .usage(usage)
                             .pNext(VkExternalMemoryBufferCreateInfo.calloc(stack)
                                     .sType$Default()
-                                    .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE)),
-                    // VERY IMPORTANT: create dedicated allocation so underlying memory object is only used by this buffer,
-                    // thus only imported once.
-                    VmaAllocationCreateInfo.calloc(stack)
+                                    .handleTypes(EXTERNAL_MEMORY_HANDLE_TYPE));
+            var allocationCreateInfo = VmaAllocationCreateInfo.calloc(stack)
                             .usage(VMA_MEMORY_USAGE_AUTO)
-                            .requiredFlags(properties)
-                            .flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT),
-                    alignment);
+                            .requiredFlags(properties);
+            
+            if (size > sharedBlockSize) {
+                allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+                alloc = sharedDedicated.alloc(bufferCreateInfo, allocationCreateInfo, alignment);
+            } else {
+                alloc = sharedBlocked.alloc(bufferCreateInfo, allocationCreateInfo, alignment);
+            }
 
-            int memoryObject = glCreateMemoryObjectsEXT();
-            long handle = importMemory(memoryObject, alloc);
+            int memoryObject = ExternalMemoryTracker.acquire(alloc, device);
 
             int glId = glCreateBuffers();
             glNamedBufferStorageMemEXT(glId, size, memoryObject, alloc.ai.offset());
             _CHECK_GL_ERROR_();
-            return new VGBuffer(alloc, glId, memoryObject, handle);
+            return new VGBuffer(alloc, glId);
         }
     }
 
@@ -156,14 +227,21 @@ public class MemoryManager {
                     .usage(usage)
                     .samples(VK_SAMPLE_COUNT_1_BIT);
             createInfo.extent().width(width).height(height).depth(depth);
-            var alloc = shared.alloc(createInfo,
-                    VmaAllocationCreateInfo.calloc(stack)
-                            .usage(VMA_MEMORY_USAGE_AUTO)
-                            .requiredFlags(properties)
-                            .flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT));
 
-            int memoryObject = glCreateMemoryObjectsEXT();
-            long handle = importMemory(memoryObject, alloc);
+            var allocInfo = VmaAllocationCreateInfo.calloc(stack)
+                            .usage(VMA_MEMORY_USAGE_AUTO)
+                            .requiredFlags(properties);
+
+            VmaAllocator.ImageAllocation alloc = null;
+
+            try {
+                alloc = sharedBlocked.alloc(createInfo, allocInfo);
+            } catch(AssertionError e) {
+                allocInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
+                alloc = sharedDedicated.alloc(createInfo, allocInfo);
+            }
+
+            int memoryObject = ExternalMemoryTracker.acquire(alloc, device);
 
             int glId = glCreateTextures(glImageType);
 
@@ -192,7 +270,7 @@ public class MemoryManager {
             }
 
             _CHECK_GL_ERROR_();
-            return new VGImage(alloc, width, height, depth, mipLevels, vkFormat, glFormat, glId, memoryObject, handle);
+            return new VGImage(alloc, width, height, depth, mipLevels, vkFormat, glFormat, glId);
         }
     }
 

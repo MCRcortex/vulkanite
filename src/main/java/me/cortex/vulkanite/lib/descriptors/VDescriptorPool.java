@@ -5,6 +5,7 @@ import me.cortex.vulkanite.lib.base.VContext;
 import org.lwjgl.vulkan.VkDescriptorPoolCreateInfo;
 import org.lwjgl.vulkan.VkDescriptorPoolSize;
 import org.lwjgl.vulkan.VkDescriptorSetAllocateInfo;
+import org.lwjgl.vulkan.VkDescriptorSetVariableDescriptorCountAllocateInfo;
 
 import java.nio.LongBuffer;
 
@@ -17,50 +18,79 @@ public class VDescriptorPool extends TrackedResourceObject {
     private final long pool;
 
     private final long[] sets;
-    private int usedSets = 0;
 
-    public VDescriptorPool(VContext ctx, int flags, int maxSets, int... types) {
+    public VDescriptorPool(VContext ctx, int flags, int numSets, int... types) {
         this.ctx = ctx;
-        this.sets = new long[maxSets];
+        this.sets = new long[numSets];
 
         try (var stack = stackPush()) {
             var sizes = VkDescriptorPoolSize.calloc(types.length, stack);
             for (int i = 0; i < types.length; i++) {
-                sizes.get(i).type(types[i]).descriptorCount(maxSets);
+                sizes.get(i).type(types[i]).descriptorCount(numSets);
             }
             LongBuffer pPool = stack.mallocLong(1);
             _CHECK_(vkCreateDescriptorPool(ctx.device, VkDescriptorPoolCreateInfo.calloc(stack)
                     .sType$Default()
                     .flags(flags)
-                    .maxSets(maxSets)
+                    .maxSets(numSets)
                     .pPoolSizes(sizes), null, pPool));
             pool = pPool.get(0);
         }
     }
 
-    public void allocateSets(VDescriptorSetLayout[] layouts) {
+    public VDescriptorPool(VContext ctx, int flags, int numSets, int countPerType, int... types) {
+        this.ctx = ctx;
+        this.sets = new long[numSets];
+
         try (var stack = stackPush()) {
-            usedSets = layouts.length;
-            var pLayouts = stack.mallocLong(usedSets);
-            for (int i = 0; i < usedSets; i++) {
-                pLayouts.put(layouts[i].layout);
+            var sizes = VkDescriptorPoolSize.calloc(types.length, stack);
+            for (int i = 0; i < types.length; i++) {
+                sizes.get(i).type(types[i]).descriptorCount(numSets * countPerType);
             }
-            pLayouts.rewind();
+            LongBuffer pPool = stack.mallocLong(1);
+            _CHECK_(vkCreateDescriptorPool(ctx.device, VkDescriptorPoolCreateInfo.calloc(stack)
+                    .sType$Default()
+                    .flags(flags)
+                    .maxSets(numSets)
+                    .pPoolSizes(sizes), null, pPool));
+            pool = pPool.get(0);
+        }
+    }
+
+    public void allocateSets(VDescriptorSetLayout layout, int... variableSizes) {
+        try (var stack = stackPush()) {
+            var layouts = stack.mallocLong(sets.length);
+            for (int i = 0; i < sets.length; i++) {
+                layouts.put(layout.layout);
+            }
+            layouts.rewind();
             LongBuffer pDescriptorSets = stack.mallocLong(sets.length);
-            _CHECK_(vkAllocateDescriptorSets(ctx.device, VkDescriptorSetAllocateInfo
-                            .calloc(stack)
+            var allocInfo = VkDescriptorSetAllocateInfo.calloc(stack)
                             .sType$Default()
                             .descriptorPool(pool)
-                            .pSetLayouts(pLayouts), pDescriptorSets),
+                            .pSetLayouts(layouts);
+            if (variableSizes != null) {
+                var descriptorCounts = stack.mallocInt(variableSizes.length);
+                for (int i = 0; i < variableSizes.length; i++) {
+                    descriptorCounts.put(variableSizes[i]);
+                }
+                descriptorCounts.rewind();
+                var variableCountInfo = VkDescriptorSetVariableDescriptorCountAllocateInfo.calloc(stack)
+                    .sType$Default()
+                    .pDescriptorCounts(descriptorCounts);
+                allocInfo.pNext(variableCountInfo.address());
+            }
+            _CHECK_(vkAllocateDescriptorSets(ctx.device, allocInfo, pDescriptorSets),
                     "Failed to allocate descriptor set");
             pDescriptorSets.get(sets);
         }
     }
 
+    public void allocateSets(VDescriptorSetLayout layout) {
+        allocateSets(layout, null);
+    }
+
     public long get(int idx) {
-        if(idx < 0 || idx >= usedSets) {
-            throw new IllegalArgumentException("Descriptor set out of range: " + idx);
-        }
         return sets[idx];
     }
 

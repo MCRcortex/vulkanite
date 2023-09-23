@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.acceleration;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
@@ -72,7 +73,11 @@ public class AccelerationManager {
         tlasManager.cleanupTick();
     }
 
-    public VBuffer getReferenceBuffer() {
-        return tlasManager.getReferenceBuffer();
+    public long getGeometrySet() {
+        return tlasManager.getGeometrySet();
+    }
+
+    public VDescriptorSetLayout getGeometryLayout() {
+        return tlasManager.getGeometryLayout();
     }
 }

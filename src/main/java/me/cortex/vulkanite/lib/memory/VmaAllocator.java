@@ -60,12 +60,12 @@ public class VmaAllocator {
         }
     }
 
-    public MemoryPool createPool() {
-        return new MemoryPool(0);
+    public MemoryPool createPool(long blockSize) {
+        return new MemoryPool(blockSize, 0);
     }
 
-    public MemoryPool createPool(Struct chain) {
-        return new MemoryPool(chain.address());
+    public MemoryPool createPool(long blockSize, Struct chain) {
+        return new MemoryPool(blockSize, chain.address());
     }
 
 
@@ -258,10 +258,11 @@ public class VmaAllocator {
 
     public class MemoryPool {
         private final long pool;
-        public MemoryPool(long pNext) {
+        public MemoryPool(long blockSize, long pNext) {
             try (var stack = stackPush()) {
-                VmaPoolCreateInfo pci = VmaPoolCreateInfo.calloc(stack);
-                pci.pMemoryAllocateNext(pNext);
+                VmaPoolCreateInfo pci = VmaPoolCreateInfo.calloc(stack)
+                    .blockSize(blockSize)
+                    .pMemoryAllocateNext(pNext);
                 PointerBuffer pb = stack.callocPointer(1);
                 if (vmaCreatePool(allocator, pci, pb) != VK_SUCCESS) {
                     throw new RuntimeException("Failed to create memory pool");

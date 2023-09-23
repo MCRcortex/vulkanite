@@ -14,6 +14,8 @@ import org.lwjgl.vulkan.VkWriteDescriptorSetAccelerationStructureKHR;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 import static org.lwjgl.vulkan.VK10.*;
 
+import java.util.List;
+
 public class DescriptorUpdateBuilder {
     private final VContext ctx;
     private final MemoryStack stack;
@@ -56,6 +58,26 @@ public class DescriptorUpdateBuilder {
                         .buffer(buffer.buffer())
                         .offset(offset)
                         .range(range));
+
+        return this;
+    }
+
+    public DescriptorUpdateBuilder buffer(int binding, int dstArrayElement, List<VBuffer> buffers) {
+        var bufInfo = VkDescriptorBufferInfo.calloc(buffers.size(), stack);
+        for (int i = 0; i < buffers.size(); i++) {
+            bufInfo.get(i)
+                    .buffer(buffers.get(i).buffer())
+                    .offset(0)
+                    .range(VK_WHOLE_SIZE);
+        }
+        updates.get()
+                .sType$Default()
+                .dstBinding(binding)
+                .dstSet(set)
+                .dstArrayElement(dstArrayElement)
+                .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+                .descriptorCount(buffers.size())
+                .pBufferInfo(bufInfo);
 
         return this;
     }
