@@ -91,6 +91,13 @@ public class MemoryManager {
                     int newMemoryObject = glCreateMemoryObjectsEXT();
                     // Everything larger than the shared block size must be dedicated allocation
                     long memorySize = Long.max(allocation.ai.offset() + allocation.ai.size(), sharedBlockSize);
+
+                    if (memorySize > sharedBlockSize) {
+                        // Section 6.2 of the OpenGL 4.5 spec
+                        glMemoryObjectParameteriEXT(newMemoryObject, GL_DEDICATED_MEMORY_OBJECT_EXT, GL_TRUE);
+                        _CHECK_GL_ERROR_();
+                    }
+
                     if (Vulkanite.IS_WINDOWS) {
                         glImportMemoryWin32HandleEXT(newMemoryObject,
                                 memorySize,
@@ -99,12 +106,6 @@ public class MemoryManager {
                     } else {
                         glImportMemoryFdEXT(newMemoryObject, memorySize,
                                 GL_HANDLE_TYPE_OPAQUE_FD_EXT, (int) nativeHandle);
-                        _CHECK_GL_ERROR_();
-                    }
-
-                    if (memorySize > sharedBlockSize) {
-                        // Section 6.2 of the OpenGL 4.5 spec
-                        glMemoryObjectParameteriEXT(newMemoryObject, GL_DEDICATED_MEMORY_OBJECT_EXT, GL_TRUE);
                         _CHECK_GL_ERROR_();
                     }
 
