@@ -22,7 +22,6 @@ import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
 import java.util.*;
-import java.util.concurrent.LinkedBlockingDeque;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
@@ -130,7 +129,7 @@ public class AccelerationTLASManager {
 
             var buildInfo = VkAccelerationStructureBuildGeometryInfoKHR.calloc(1, stack)
                     .sType$Default()
-                    .mode(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)//TODO: explore using VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR to speedup build times
+                    .mode(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
                     .type(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
                     .pGeometries(geometries)
                     .geometryCount(geometries.capacity());
@@ -335,7 +334,11 @@ public class AccelerationTLASManager {
         private int setCapacity = 0;
 
         private record DescUpdateJob(int binding, int dstArrayElement, List<VBuffer> buffers) {}
-        private final LinkedBlockingDeque<DescUpdateJob> descUpdateJobs = new LinkedBlockingDeque<>();
+        private record ArenaDeallocJob(int index, int count, List<VBuffer> geometryBuffers) {}
+
+        private final Deque<DescUpdateJob> descUpdateJobs = new ArrayDeque<>();
+        private final Deque<ArenaDeallocJob> arenaDeallocJobs = new ArrayDeque<>();
+        private final Deque<VDescriptorPool> descPoolsToRelease = new ArrayDeque<>();
 
         public void resizeBindlessSet(int newSize, VFence fence) {
             if (geometryBufferSetLayout == null) {
@@ -364,13 +367,7 @@ public class AccelerationTLASManager {
                         vkUpdateDescriptorSets(context.device, null, setCopy);
                     }
 
-                    // This breaks the shit out of it
-                    // context.sync.addCallback(fence, () -> {
-                    //     geometryBufferDescPool.free();
-                    // });
-
-                    vkDeviceWaitIdle(context.device);
-                    geometryBufferDescPool.free();
+                    descPoolsToRelease.add(geometryBufferDescPool);
                 }
 
                 geometryBufferDescPool = newGeometryBufferDescPool;
@@ -396,6 +393,9 @@ public class AccelerationTLASManager {
                 dub.buffer(job.binding, job.dstArrayElement, job.buffers);
             }
             dub.apply();
+
+            // Queue up the arena dealloc jobs to be done after the fence is done
+            Vulkanite.INSTANCE.addSyncedCallback(() -> { fenceTick(); });
         }
 
         //TODO: mixinto RenderSection and add a reference to a holder for us, its much faster than a hashmap
@@ -415,6 +415,17 @@ public class AccelerationTLASManager {
 
         Map<ChunkSectionPos, Holder> tmp = new HashMap<>();
 
+        public void fenceTick() {
+            while (!arenaDeallocJobs.isEmpty()) {
+                var job = arenaDeallocJobs.poll();
+                arena.free(job.index, job.count);
+                job.geometryBuffers.forEach(buffer -> buffer.free());
+            }
+            while (!descPoolsToRelease.isEmpty()) {
+                descPoolsToRelease.poll().free();
+            }
+        }
+
         public void update(AccelerationBlasBuilder.BLASBuildResult result) {
             var data = result.data();
             var holder = tmp.computeIfAbsent(data.section().getPosition(), a -> new Holder(alloc(), data.section()));
@@ -424,8 +435,7 @@ public class AccelerationTLASManager {
             holder.structure = result.structure();
 
             if (holder.geometryIndex != -1) {
-                arena.free(holder.geometryIndex, holder.geometryBuffers.size());
-                holder.geometryBuffers.forEach(buffer -> Vulkanite.INSTANCE.addSyncedCallback(buffer::free));
+                arenaDeallocJobs.add(new ArenaDeallocJob(holder.geometryIndex, holder.geometryBuffers.size(), holder.geometryBuffers));
             }
             holder.geometryBuffers = data.geometryBuffers();
             holder.geometryIndex = arena.allocate(holder.geometryBuffers.size());
@@ -454,10 +464,15 @@ public class AccelerationTLASManager {
 
             free(holder.id);
 
-            if (holder.geometryIndex != -1) {
-                arena.free(holder.geometryIndex, holder.geometryBuffers.size());
+            for (var job : descUpdateJobs) {
+                if (job.buffers == holder.geometryBuffers) {
+                    descUpdateJobs.remove(job);
+                }
             }
-            holder.geometryBuffers.forEach(buffer -> Vulkanite.INSTANCE.addSyncedCallback(buffer::free));
+
+            if (holder.geometryIndex != -1) {
+                arenaDeallocJobs.add(new ArenaDeallocJob(holder.geometryIndex, holder.geometryBuffers.size(), holder.geometryBuffers));
+            }
         }
     }
 
