@@ -202,7 +202,7 @@ public class VulkanPipeline {
         barrier.sType$Default()
                 .sType$Default()
                 .image(image.image())
-                .oldLayout(VK_IMAGE_LAYOUT_UNDEFINED)
+                .oldLayout(VK_IMAGE_LAYOUT_GENERAL)
                 .newLayout(targetLayout)
                 .srcAccessMask(0)
                 .dstAccessMask(targetAccess)
