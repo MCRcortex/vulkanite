@@ -25,7 +25,7 @@ import static org.lwjgl.vulkan.VK10.*;
 
 @Mixin(value = NativeImageBackedTexture.class, remap = false)
 public abstract class MixinNativeImageBackedTexture extends AbstractTexture implements IVGImage {
-    @Redirect(method = "<init>(Lnet/minecraft/client/texture/NativeImage;)V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/TextureUtil;prepareImage(III)V"))
+    @Redirect(remap = true, method = "<init>(Lnet/minecraft/client/texture/NativeImage;)V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/TextureUtil;prepareImage(III)V"))
     private void redirectGen(int id, int width, int height) {
         if(!((Object) this instanceof NativeImageBackedCustomTexture)) {
             TextureUtil.prepareImage(id, width, height);
