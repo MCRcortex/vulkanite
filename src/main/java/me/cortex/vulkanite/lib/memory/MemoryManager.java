@@ -22,6 +22,7 @@ import static org.lwjgl.opengl.EXTMemoryObject.*;
 import static org.lwjgl.opengl.EXTMemoryObjectFD.GL_HANDLE_TYPE_OPAQUE_FD_EXT;
 import static org.lwjgl.opengl.EXTMemoryObjectFD.glImportMemoryFdEXT;
 import static org.lwjgl.opengl.EXTMemoryObjectWin32.glImportMemoryWin32HandleEXT;
+import static org.lwjgl.opengl.EXTMemoryObjectWin32.GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT;
 import static org.lwjgl.opengl.EXTSemaphoreWin32.GL_HANDLE_TYPE_OPAQUE_WIN32_EXT;
 import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.opengl.GL12.GL_TEXTURE_3D;
@@ -35,10 +36,10 @@ import static org.lwjgl.vulkan.KHRExternalMemoryWin32.vkGetMemoryWin32HandleKHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
-import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
 
 public class MemoryManager {
-    private static final int EXTERNAL_MEMORY_HANDLE_TYPE = Vulkanite.IS_WINDOWS?VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+    private static final int EXTERNAL_MEMORY_HANDLE_TYPE = Vulkanite.IS_WINDOWS?VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
     private final VkDevice device;
     private final VmaAllocator allocator;
     private final boolean hasDeviceAddresses;
@@ -72,7 +73,7 @@ public class MemoryManager {
                             _CHECK_(vkGetMemoryWin32HandleKHR(device, VkMemoryGetWin32HandleInfoKHR.calloc(stack)
                                     .sType$Default()
                                     .memory(vkMemory)
-                                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT), pb));
+                                    .handleType(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT), pb));
                             nativeHandle = pb.get(0);
                         } else {
                             IntBuffer pb = stack.callocInt(1);
@@ -93,7 +94,7 @@ public class MemoryManager {
                     if (Vulkanite.IS_WINDOWS) {
                         glImportMemoryWin32HandleEXT(newMemoryObject,
                                 memorySize,
-                                GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, nativeHandle);
+                                GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT, nativeHandle);
                         _CHECK_GL_ERROR_();
                     } else {
                         glImportMemoryFdEXT(newMemoryObject, memorySize,
@@ -131,16 +132,16 @@ public class MemoryManager {
                     glDeleteMemoryObjectsEXT(tracked.desc.glMemoryObj);
                     _CHECK_GL_ERROR_();
                     if (Vulkanite.IS_WINDOWS) {
-                        if (!Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(tracked.desc.handle)))) {
-                            int error = Kernel32.INSTANCE.GetLastError();
-                            System.err.println("STATE MIGHT BE BROKEN! Failed to close handle: " + error);
-                            // throw new IllegalStateException();
-                        }
+                        // if (!Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(tracked.desc.handle)))) {
+                        //     int error = Kernel32.INSTANCE.GetLastError();
+                        //     System.err.println("STATE MIGHT BE BROKEN! Failed to close handle: " + error);
+                        //     throw new IllegalStateException();
+                        // }
                     } else {
                         int code = 0;
                         if ((code = LibC.INSTANCE.close((int) tracked.desc.handle)) != 0) {
                             System.err.println("STATE MIGHT BE BROKEN! Failed to close FD: " + code);
-                            // throw new IllegalStateException();
+                            throw new IllegalStateException();
                         }
                     }
                     MEMORY_TO_HANDLES.remove(memory);
