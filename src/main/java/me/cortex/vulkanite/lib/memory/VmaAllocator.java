@@ -113,7 +113,23 @@ public class VmaAllocator {
             vkGetBufferMemoryRequirements(device, buffer, memReq);
             allocationCreateInfo.memoryTypeBits(memReq.memoryTypeBits());
 
-            if (memReq.size() > sharedBlockSize) {
+            boolean dedicated = memReq.size() > sharedBlockSize;
+
+            if (!dedicated) {
+                var dedicatedMemReq = VkMemoryDedicatedRequirements.calloc(stack)
+                        .sType$Default()
+                        .pNext(0);
+                var memReq2 = VkMemoryRequirements2.calloc(stack)
+                        .sType$Default()
+                        .pNext(dedicatedMemReq.address());
+                vkGetBufferMemoryRequirements2(device, VkBufferMemoryRequirementsInfo2
+                        .calloc(stack)
+                        .sType$Default()
+                        .buffer(buffer), memReq2);
+                dedicated = dedicatedMemReq.prefersDedicatedAllocation() || dedicatedMemReq.requiresDedicatedAllocation();
+            }
+
+            if (dedicated) {
                 allocationCreateInfo.flags(VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
                 allocationCreateInfo.pool(sharedDedicatedPool);
             } else {
@@ -132,7 +148,7 @@ public class VmaAllocator {
 
             boolean hasDeviceAddress = ((bufferCreateInfo.usage() & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) > 0);
             return new SharedBufferAllocation(buffer, allocation, vai, hasDeviceAddress,
-                    memReq.size() > sharedBlockSize);
+                    dedicated);
         }
     }
 
