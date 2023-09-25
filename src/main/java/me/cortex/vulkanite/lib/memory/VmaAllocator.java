@@ -5,22 +5,17 @@ import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
-import org.lwjgl.system.Struct;
 import org.lwjgl.util.vma.*;
 import org.lwjgl.vulkan.*;
 
-import java.lang.ref.Cleaner;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.vma.Vma.*;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.*;
-import static org.lwjgl.vulkan.VK11.VK_API_VERSION_1_1;
 
 public class VmaAllocator {
     private final VkDevice device;
@@ -57,7 +52,7 @@ public class VmaAllocator {
 
             allocator = pAllocator.get(0);
 
-            int sharedPoolMemoryTypeIndex = -1;
+            int sharedPoolMemoryTypeIndex;
 
             {
                 var bufferCreateInfo = VkBufferCreateInfo.calloc(stack)
@@ -136,14 +131,13 @@ public class VmaAllocator {
                 allocationCreateInfo.pool(sharedPool);
             }
 
-            long allocation = 0;
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
 
             PointerBuffer pAllocation = stack.mallocPointer(1);
             _CHECK_(
                     vmaAllocateMemoryForBuffer(allocator, buffer, allocationCreateInfo, pAllocation, vai),
                     "Failed to allocate memory for buffer");
-            allocation = pAllocation.get(0);
+            long allocation = pAllocation.get(0);
             _CHECK_(vmaBindBufferMemory(allocator, allocation, buffer), "failed to bind buffer memory");
 
             boolean hasDeviceAddress = ((bufferCreateInfo.usage() & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) > 0);
@@ -190,13 +184,12 @@ public class VmaAllocator {
                     .pool(sharedDedicatedPool)
                     .memoryTypeBits(memReq.memoryTypeBits());
 
-            long allocation = 0;
             VmaAllocationInfo vai = VmaAllocationInfo.calloc();
             PointerBuffer pAllocation = stack.mallocPointer(1);
             _CHECK_(
                     vmaAllocateMemoryForImage(allocator, image, allocationCreateInfo, pAllocation, vai),
                     "Failed to allocate memory for image");
-            allocation = pAllocation.get(0);
+            long allocation = pAllocation.get(0);
             _CHECK_(vmaBindImageMemory(allocator, allocation, image), "failed to bind image memory");
 
             return new SharedImageAllocation(image, allocation, vai, true);
@@ -287,17 +280,15 @@ public class VmaAllocator {
         public void flush(long offset, long size) {
             // TODO: offset must be a multiple of
             // VkPhysicalDeviceLimits::nonCoherentAtomSize
-            try (var stack = stackPush()) {
-                /*
-                 * _CHECK_(vkFlushMappedMemoryRanges(device, VkMappedMemoryRange
-                 * .calloc(stack)
-                 * .sType$Default()
-                 * .memory(ai.deviceMemory())
-                 * .size(size)
-                 * .offset(ai.offset()+offset)));
-                 */
-                vmaFlushAllocation(allocator, allocation, offset, size);
-            }
+            /*
+             * _CHECK_(vkFlushMappedMemoryRanges(device, VkMappedMemoryRange
+             * .calloc(stack)
+             * .sType$Default()
+             * .memory(ai.deviceMemory())
+             * .size(size)
+             * .offset(ai.offset()+offset)));
+             */
+            vmaFlushAllocation(allocator, allocation, offset, size);
         }
 
     }

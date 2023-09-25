@@ -281,7 +281,7 @@ public class VulkanPipeline {
                     .acceleration(1, tlas)
                     .imageSampler(3, blockAtlasView.getView(), sampler)
                     .imageSampler(4,
-                            blockAtlasNormalView.getImage() != null ? blockAtlasNormalView.getView()
+                            blockAtlasNormalView.getView() != null ? blockAtlasNormalView.getView()
                                     : placeholderNormalsView,
                             sampler)
                     .imageSampler(5,

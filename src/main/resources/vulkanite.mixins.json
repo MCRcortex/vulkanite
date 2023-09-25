@@ -25,7 +25,6 @@
     "sodium.chunk.MixinChunkRenderRebuildTask",
     "sodium.chunk.VertexFormatAccessor",
     "sodium.gl.MixinCommandList",
-    "sodium.gl.MixinGlBufferArena",
     "sodium.gl.MixinGLRenderDevice",
     "sodium.gl.MixinMutableBuffer"
   ],
