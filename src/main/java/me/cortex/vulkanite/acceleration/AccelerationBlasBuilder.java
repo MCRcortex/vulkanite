@@ -322,7 +322,7 @@ public class AccelerationBlasBuilder {
                             as.free();
                         }
 
-                        cmd.enqueueFree();
+                        sinlgeUsePool.releaseNow(cmd);
                         fence.free();
                         link.free();
                     });
