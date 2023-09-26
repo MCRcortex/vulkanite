@@ -136,10 +136,12 @@ public class AccelerationTLASManager {
                         null, null);
             }
 
+            // TLAS always rebuild & PREFER_FAST_TRACE according to Nvidia
             var buildInfo = VkAccelerationStructureBuildGeometryInfoKHR.calloc(1, stack)
                     .sType$Default()
                     .mode(VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR)
                     .type(VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR)
+                    .flags(VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR)
                     .pGeometries(geometries)
                     .geometryCount(geometries.capacity());
 
