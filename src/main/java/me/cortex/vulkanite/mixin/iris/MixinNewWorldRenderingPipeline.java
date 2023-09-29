@@ -84,7 +84,11 @@ public class MixinNewWorldRenderingPipeline {
             buffers = ((ShaderStorageBufferHolderAccessor)shaderStorageBufferHolder).getBuffers();
         }
 
-        pipeline.renderPostShadows(((IRenderTargetVkGetter)renderTargets.getOrCreate(0)).getMain(), par2, buffers);
+        List<VGImage> outImgs = new ArrayList<>();
+        for (int i = 0; i < renderTargets.getRenderTargetCount(); i++) {
+            outImgs.add(((IRenderTargetVkGetter)renderTargets.getOrCreate(i)).getMain());
+        }
+        pipeline.renderPostShadows(outImgs, par2, buffers);
     }
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))

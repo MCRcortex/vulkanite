@@ -73,7 +73,7 @@ public class VulkanPipeline {
     private final VSampler sampler;
     private final VSampler ctexSampler;
 
-    private final SharedImageViewTracker composite0mainView;
+    private final SharedImageViewTracker[] irisRenderTargetViews;
     private final SharedImageViewTracker[] customTextureViews;
     private final SharedImageViewTracker blockAtlasView;
     private final SharedImageViewTracker blockAtlasNormalView;
@@ -85,6 +85,8 @@ public class VulkanPipeline {
     private final VImageView placeholderNormalsView;
 
     private int fidx;
+
+    private final int maxIrisRenderTargets = 16;
 
     public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds, VGImage[] customTextures) {
         this.ctx = ctx;
@@ -98,7 +100,10 @@ public class VulkanPipeline {
                 this.customTextureViews[i] = new SharedImageViewTracker(ctx, ()->customTextures[index]);
             }
 
-            this.composite0mainView = new SharedImageViewTracker(ctx, null);
+            this.irisRenderTargetViews = new SharedImageViewTracker[maxIrisRenderTargets];
+            for(int i = 0; i < maxIrisRenderTargets; i++) {
+                this.irisRenderTargetViews[i] = new SharedImageViewTracker(ctx, null);
+            }
             this.blockAtlasView = new SharedImageViewTracker(ctx, ()->{
                 AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
                 return ((IVGImage)blockAtlas).getVGImage();
@@ -172,7 +177,7 @@ public class VulkanPipeline {
                     .binding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
                     .binding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
                     // Reordered these so output texture is last... this means you can dynamically add more output textures without messing other ids
-                    .binding(6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)// output texture
+                    .binding(6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, VK_SHADER_STAGE_ALL)// output texture
                     .build(ctx);
 
             DescriptorSetLayoutBuilder ctexLayoutBuilder = new DescriptorSetLayoutBuilder();
@@ -205,7 +210,7 @@ public class VulkanPipeline {
                 new ShaderReflection.Binding("", 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
                 new ShaderReflection.Binding("", 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
                 new ShaderReflection.Binding("", 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
-                new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0, false),
+                new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, false),
             });
 
             var geomSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
@@ -267,12 +272,14 @@ public class VulkanPipeline {
 
     private int frameId;
 
-    public void renderPostShadows(VGImage outImg, Camera camera, ShaderStorageBuffer[] ssbos) {
+    public void renderPostShadows(List<VGImage> outImgs, Camera camera, ShaderStorageBuffer[] ssbos) {
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
 
         var in = ctx.sync.createSharedBinarySemaphore();
-        in.glSignal(new int[0], new int[]{outImg.glId}, new int[]{GL_LAYOUT_GENERAL_EXT});
+        var outImgsGlIds = outImgs.stream().mapToInt(i -> i.glId).toArray();
+        var outImgsGlLayouts = outImgs.stream().mapToInt(i -> GL_LAYOUT_GENERAL_EXT).toArray();
+        in.glSignal(new int[0], outImgsGlIds, outImgsGlLayouts);
         glFlush();
 
         var tlasLink = ctx.sync.createBinarySemaphore();
@@ -338,8 +345,13 @@ public class VulkanPipeline {
                     .imageSampler(5,
                             blockAtlasSpecularView.getView() != null ? blockAtlasSpecularView.getView()
                                     : placeholderSpecularView,
-                            sampler)
-                    .imageStore(6, composite0mainView.getView(() -> outImg));
+                            sampler);
+            List<VImageView> outImgViewList = new ArrayList<>(outImgs.size());
+            for (int i = 0; i < outImgs.size(); i++) {
+                int index = i;
+                outImgViewList.add(irisRenderTargetViews[i].getView(() -> outImgs.get(index)));
+            }
+            updater.imageStore(6, 0, outImgViewList);
             updater.apply();
 
             updater = new DescriptorUpdateBuilder(ctx, customTextureViews.length)
@@ -365,7 +377,9 @@ public class VulkanPipeline {
             {
                 // Put barriers on images & transition to the optimal layout
                 // These layouts also need to match the descriptor sets
-                cmd.encodeImageTransition(composite0mainView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+                for (var img : outImgs) {
+                    cmd.encodeImageTransition(img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+                }
                 cmd.encodeImageTransition(blockAtlasView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
 
                 var image = blockAtlasNormalView.getImage();
@@ -394,12 +408,16 @@ public class VulkanPipeline {
                     sets.put(pipeline.ssboSet, ssboSet);
                 }
                 pipeline.pipeline.bindDSet(cmd, sets.values().stream().mapToLong(a->a).toArray());
-                pipeline.pipeline.trace(cmd, outImg.width, outImg.height, 1);
+                pipeline.pipeline.trace(cmd, outImgs.get(0).width, outImgs.get(0).height, 1);
+
+                // Barrier on the output images
+                for (var img : outImgs) {
+                    cmd.encodeImageTransition(img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+                }
             }
 
             {
                 // Transition images back to general layout (for OpenGL)
-                cmd.encodeImageTransition(composite0mainView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
                 cmd.encodeImageTransition(blockAtlasView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
 
                 var image = blockAtlasNormalView.getImage();
@@ -432,7 +450,7 @@ public class VulkanPipeline {
             });
         }
 
-        out.glWait(new int[0], new int[]{outImg.glId}, new int[]{GL_LAYOUT_GENERAL_EXT});
+        out.glWait(new int[0], outImgsGlIds, outImgsGlLayouts);
         glFlush();
 
         fidx++;
@@ -472,8 +490,11 @@ public class VulkanPipeline {
                 customTexView.free();
         }
 
-        if (composite0mainView != null)
-            composite0mainView.free();
+        for (SharedImageViewTracker irisRenderTargetView : irisRenderTargetViews) {
+            if (irisRenderTargetView != null)
+                irisRenderTargetView.free();
+        }
+
         if (blockAtlasView != null)
             blockAtlasView.free();
         if (blockAtlasNormalView != null)

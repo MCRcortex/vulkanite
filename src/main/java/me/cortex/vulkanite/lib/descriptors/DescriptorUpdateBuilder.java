@@ -119,6 +119,22 @@ public class DescriptorUpdateBuilder {
         return this;
     }
 
+    public DescriptorUpdateBuilder imageStore(int binding, int dstArrayElement, List<VImageView> views) {
+        var imgInfo = VkDescriptorImageInfo.calloc(views.size(), stack);
+        for (int i = 0; i < views.size(); i++) {
+            imgInfo.get(i)
+                    .imageLayout(VK_IMAGE_LAYOUT_GENERAL)
+                    .imageView(viewOrPlaceholder(views.get(i)));
+        }
+        updates.get()
+                .sType$Default()
+                .dstBinding(binding)
+                .dstSet(set)
+                .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
+                .descriptorCount(views.size())
+                .pImageInfo(imgInfo);
+        return this;
+    }
     public DescriptorUpdateBuilder imageStore(int binding, VImageView view) {
         return imageStore(binding, VK_IMAGE_LAYOUT_GENERAL, view);
     }
