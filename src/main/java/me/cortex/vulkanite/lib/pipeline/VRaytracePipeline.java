@@ -5,6 +5,7 @@ import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.shader.ShaderModule;
+import me.cortex.vulkanite.lib.shader.reflection.ShaderReflection;
 import org.lwjgl.vulkan.VkStridedDeviceAddressRegionKHR;
 
 import java.util.Set;
@@ -23,13 +24,15 @@ public class VRaytracePipeline extends TrackedResourceObject {
     private final VkStridedDeviceAddressRegionKHR hit;
     private final VkStridedDeviceAddressRegionKHR callable;
     private final Set<ShaderModule> shadersUsed;
+    public final ShaderReflection reflection;
 
     VRaytracePipeline(VContext context, long pipeline, long layout, VBuffer sbtMap,
                       VkStridedDeviceAddressRegionKHR raygen,
                       VkStridedDeviceAddressRegionKHR miss,
                       VkStridedDeviceAddressRegionKHR hit,
                       VkStridedDeviceAddressRegionKHR callable,
-                      Set<ShaderModule> shadersUsed) {
+                      Set<ShaderModule> shadersUsed,
+                      ShaderReflection reflection) {
 
         this.context = context;
         this.pipeline = pipeline;
@@ -40,6 +43,7 @@ public class VRaytracePipeline extends TrackedResourceObject {
         this.hit = hit;
         this.callable = callable;
         this.shadersUsed = shadersUsed;
+        this.reflection = reflection;
     }
 
     public void bind(VCmdBuff cmd) {
@@ -62,5 +66,6 @@ public class VRaytracePipeline extends TrackedResourceObject {
         miss.free();
         hit.free();
         callable.free();
+        reflection.freeLayouts();
     }
 }

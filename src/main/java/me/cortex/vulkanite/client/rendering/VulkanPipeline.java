@@ -20,6 +20,7 @@ import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
+import me.cortex.vulkanite.lib.shader.reflection.ShaderReflection;
 import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
 import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
@@ -41,6 +42,7 @@ import org.lwjgl.vulkan.*;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
+import java.util.*;
 
 import static net.coderbot.iris.uniforms.CelestialUniforms.getSunAngle;
 import static net.coderbot.iris.uniforms.CelestialUniforms.isDay;
@@ -58,7 +60,8 @@ public class VulkanPipeline {
     private final AccelerationManager accelerationManager;
     private final VCommandPool singleUsePool;
 
-    private VRaytracePipeline[] raytracePipelines;
+    private record RtPipeline(VRaytracePipeline pipeline, int commonSet, int geomSet, int customTexSet, int ssboSet) {}
+    private RtPipeline[] raytracePipelines;
     private VDescriptorSetLayout commonLayout;
     private VDescriptorSetLayout customtexLayout;
     private VDescriptorSetLayout storageBufferLayout;
@@ -196,18 +199,66 @@ public class VulkanPipeline {
             storageBufferDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, storageBufferLayout.types);
             storageBufferDescriptorPool.allocateSets(storageBufferLayout);
 
-            raytracePipelines = new VRaytracePipeline[passes.length];
+            var commonSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
+                new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
+                new ShaderReflection.Binding("", 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, false),
+                new ShaderReflection.Binding("", 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                new ShaderReflection.Binding("", 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                new ShaderReflection.Binding("", 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 0, false),
+            });
+
+            var geomSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
+               new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, true)
+            });
+
+            ArrayList<ShaderReflection.Binding> customTexBindings = new ArrayList<>();
+            for (int i = 0; i < customTextureViews.length; i++) {
+                customTexBindings.add(new ShaderReflection.Binding("", i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false));
+            }
+            var customTexSetExpected = new ShaderReflection.Set(customTexBindings);
+
+            ArrayList<ShaderReflection.Binding> ssboBindings = new ArrayList<>();
+            for (int id : ssboIds) {
+                ssboBindings.add(new ShaderReflection.Binding("", id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, true));
+            }
+            var ssboSetExpected = new ShaderReflection.Set(ssboBindings);
+
+            raytracePipelines = new RtPipeline[passes.length];
             for (int i = 0; i < passes.length; i++) {
-                var builder = new RaytracePipelineBuilder()
-                        .addLayout(commonLayout)
-                        .addLayout(accelerationManager.getGeometryLayout())
-                        .addLayout(customtexLayout)
-                        .addLayout(storageBufferLayout);
+                var builder = new RaytracePipelineBuilder();
                 passes[i].apply(builder);
-                raytracePipelines[i] = builder.build(ctx, 1);
+                var pipe = builder.build(ctx, 1);
+
+                // Validate the layout
+                int commonSet = -1;
+                int geomSet = -1;
+                int customTexSet = -1;
+                int ssboSet = -1;
+
+                for (int setIdx = 0; setIdx < pipe.reflection.getNSets(); setIdx++) {
+                    var set = pipe.reflection.getSet(setIdx);
+                    if (set.validate(commonSetExpected)) {
+                        commonSet = setIdx;
+                    } else if (set.validate(geomSetExpected)) {
+                        geomSet = setIdx;
+                    } else if (set.validate(customTexSetExpected)) {
+                        customTexSet = setIdx;
+                    } else if (set.validate(ssboSetExpected)) {
+                        ssboSet = setIdx;
+                    } else {
+                        throw new RuntimeException("Raytracing pipeline " + i + " has an unexpected descriptor set layout at set " + setIdx);
+                    }
+                }
+
+                raytracePipelines[i] = new RtPipeline(pipe, commonSet, geomSet, customTexSet, ssboSet);
             }
 
         } catch (Exception e) {
+            System.err.println(e.getMessage());
+
+            e.printStackTrace();
+            destory();
             throw new RuntimeException(e);
         }
     }
@@ -328,9 +379,22 @@ public class VulkanPipeline {
             }
 
             for (var pipeline : raytracePipelines) {
-                pipeline.bind(cmd);
-                pipeline.bindDSet(cmd, commonSet, accelerationManager.getGeometrySet(), ctexSet, ssboSet);
-                pipeline.trace(cmd, outImg.width, outImg.height, 1);
+                pipeline.pipeline.bind(cmd);
+                var sets = new TreeMap<Integer, Long>();
+                if (pipeline.commonSet != -1) {
+                    sets.put(pipeline.commonSet, commonSet);
+                }
+                if (pipeline.geomSet != -1) {
+                    sets.put(pipeline.geomSet, accelerationManager.getGeometrySet());
+                }
+                if (pipeline.customTexSet != -1) {
+                    sets.put(pipeline.customTexSet, ctexSet);
+                }
+                if (pipeline.ssboSet != -1) {
+                    sets.put(pipeline.ssboSet, ssboSet);
+                }
+                pipeline.pipeline.bindDSet(cmd, sets.values().stream().mapToLong(a->a).toArray());
+                pipeline.pipeline.trace(cmd, outImg.width, outImg.height, 1);
             }
 
             {
@@ -378,35 +442,56 @@ public class VulkanPipeline {
 
     public void destory() {
         for (var pass : raytracePipelines) {
-            pass.free();
+            if (pass != null) {
+                pass.pipeline.free();
+            }
         }
-        commonLayout.free();
-        customtexLayout.free();
-        storageBufferLayout.free();
-        commonDescriptorPool.free();
-        customtexDescriptorPool.free();
-        storageBufferDescriptorPool.free();
+        if (commonLayout != null)
+            commonLayout.free();
+        if (customtexLayout != null)
+            customtexLayout.free();
+        if (storageBufferLayout != null)
+            storageBufferLayout.free();
+        if (commonDescriptorPool != null)
+            commonDescriptorPool.free();
+        if (customtexDescriptorPool != null)
+            customtexDescriptorPool.free();
+        if (storageBufferDescriptorPool != null)
+            storageBufferDescriptorPool.free();
         ctx.sync.checkFences();
-        singleUsePool.doReleases();
-        singleUsePool.free();
+        if (singleUsePool != null) {
+            singleUsePool.doReleases();
+            singleUsePool.free();
+        }
         if (previousSemaphore != null) {
             previousSemaphore.free();
         }
 
         for (SharedImageViewTracker customTexView : customTextureViews) {
-            customTexView.free();
+            if (customTexView != null)
+                customTexView.free();
         }
 
-        composite0mainView.free();
-        blockAtlasView.free();
-        blockAtlasNormalView.free();
-        blockAtlasSpecularView.free();
-        placeholderNormalsView.free();
-        placeholderNormals.free();
-        placeholderSpecularView.free();
-        placeholderSpecular.free();
-        sampler.free();
-        ctexSampler.free();
+        if (composite0mainView != null)
+            composite0mainView.free();
+        if (blockAtlasView != null)
+            blockAtlasView.free();
+        if (blockAtlasNormalView != null)
+            blockAtlasNormalView.free();
+        if (blockAtlasSpecularView != null)
+            blockAtlasSpecularView.free();
+        if (placeholderNormalsView != null)
+            placeholderNormalsView.free();
+        if (placeholderNormals != null)
+            placeholderNormals.free();
+        if (placeholderSpecularView != null)
+            placeholderSpecularView.free();
+        if (placeholderSpecular != null)
+            placeholderSpecular.free();
+        if (sampler != null)
+            sampler.free();
+        if (ctexSampler != null)
+            ctexSampler.free();
     }
 
 

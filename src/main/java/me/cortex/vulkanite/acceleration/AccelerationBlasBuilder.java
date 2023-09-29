@@ -4,6 +4,7 @@ package me.cortex.vulkanite.acceleration;
 //Multithreaded acceleration manager, builds blas's in a seperate queue,
 // then memory copies over to main, while doing compaction
 
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
@@ -443,7 +444,6 @@ public class AccelerationBlasBuilder {
             for (var entry : acbr.entrySet()) {
                 int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0;
                 buildData.add(new BLASTriangleData(entry.getValue().quadCount(), flag));
-                // TODO: Just don't create this data in the first place
 
                 var geometry = cbr.getMesh(entry.getKey());
                 if (geometry.getVertexData().getLength() == 0) {

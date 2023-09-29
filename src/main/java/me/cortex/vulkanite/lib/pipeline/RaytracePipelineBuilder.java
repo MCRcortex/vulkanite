@@ -4,6 +4,7 @@ import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.shader.ShaderModule;
+import me.cortex.vulkanite.lib.shader.reflection.ShaderReflection;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
@@ -57,7 +58,7 @@ public class RaytracePipelineBuilder {
         return this;
     }
 
-    Set<VDescriptorSetLayout> layouts = new LinkedHashSet<>();
+    ArrayList<VDescriptorSetLayout> layouts = new ArrayList<>();
     public RaytracePipelineBuilder addLayout(VDescriptorSetLayout layout) {
         layouts.add(layout);
         return this;
@@ -66,6 +67,23 @@ public class RaytracePipelineBuilder {
     //TODO: generate stb
     public VRaytracePipeline build(VContext context, int maxDepth) {
         shaders.add(gen);
+
+        ArrayList<ShaderReflection> reflections = new ArrayList<>();
+        ShaderReflection reflection = null;
+        for (var shader : shaders) {
+            reflections.add(shader.shader().getReflection());
+        }
+        try {
+            reflection = ShaderReflection.mergeStages(reflections.toArray(ShaderReflection[]::new));
+            System.out.println("Raytracing pipeline reflection:\n" + reflection);
+        } catch (Exception e) {
+            System.out.println("Failed to merge shader reflections, this is likely due to a mismatch in descriptor sets");
+            throw e;
+        }
+
+        if (layouts.isEmpty()) {
+            layouts.addAll(reflection.buildSetLayouts(context));
+        }
 
         try (var stack = stackPush()) {
             VkPipelineShaderStageCreateInfo.Buffer shaderStages = VkPipelineShaderStageCreateInfo.calloc(shaders.size(), stack);
@@ -201,7 +219,8 @@ public class RaytracePipelineBuilder {
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + missGroupBase, handleSizeAligned, handleSizeAligned * missGroupCount),
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + hitGroupsBase, handleSizeAligned, handleSizeAligned * hitGroupsCount),
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + callGroupBase, handleSizeAligned, handleSizeAligned * callGroupCount),
-                        shaders
+                        shaders,
+                        reflection
                 );
             }
         }
