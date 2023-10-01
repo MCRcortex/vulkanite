@@ -1,20 +1,10 @@
 package me.cortex.vulkanite.lib.memory;
 
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.vulkan.VkBufferDeviceAddressInfo;
-import org.lwjgl.vulkan.VkDevice;
-import org.lwjgl.vulkan.VkDeviceOrHostAddressKHR;
-import org.lwjgl.vulkan.VkMappedMemoryRange;
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 
-import java.lang.ref.Cleaner;
-
-import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
-import static org.lwjgl.system.MemoryStack.stackPush;
-import static org.lwjgl.vulkan.KHRBufferDeviceAddress.vkGetBufferDeviceAddressKHR;
 import static org.lwjgl.vulkan.VK10.VK_WHOLE_SIZE;
-import static org.lwjgl.vulkan.VK10.vkFlushMappedMemoryRanges;
 
-public class VBuffer {
+public class VBuffer extends TrackedResourceObject {
     private VmaAllocator.BufferAllocation allocation;
 
     VBuffer(VmaAllocator.BufferAllocation allocation) {
@@ -26,6 +16,7 @@ public class VBuffer {
     }
 
     public void free() {
+        free0();
         allocation.free();
         allocation = null;
     }

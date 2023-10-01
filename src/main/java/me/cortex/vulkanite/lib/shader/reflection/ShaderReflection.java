@@ -220,6 +220,7 @@ public class ShaderReflection {
                                         | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
                     } else {
                         builder.binding(binding.binding, binding.descriptorType, binding.arraySize, VK_SHADER_STAGE_ALL);
+                        builder.setBindingFlags(binding.binding, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
                     }
                 } else {
                     builder.binding(binding.binding, binding.descriptorType, VK_SHADER_STAGE_ALL);
@@ -227,6 +228,10 @@ public class ShaderReflection {
             }
             layouts.add(builder.build(context));
         }
+        return layouts;
+    }
+
+    public final List<VDescriptorSetLayout> getLayouts() {
         return layouts;
     }
 

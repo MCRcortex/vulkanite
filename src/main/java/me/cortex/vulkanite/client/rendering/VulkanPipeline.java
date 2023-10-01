@@ -62,13 +62,6 @@ public class VulkanPipeline {
 
     private record RtPipeline(VRaytracePipeline pipeline, int commonSet, int geomSet, int customTexSet, int ssboSet) {}
     private RtPipeline[] raytracePipelines;
-    private VDescriptorSetLayout commonLayout;
-    private VDescriptorSetLayout customtexLayout;
-    private VDescriptorSetLayout storageBufferLayout;
-
-    private VDescriptorPool commonDescriptorPool;
-    private VDescriptorPool customtexDescriptorPool;
-    private VDescriptorPool storageBufferDescriptorPool;
 
     private final VSampler sampler;
     private final VSampler ctexSampler;
@@ -170,40 +163,6 @@ public class VulkanPipeline {
                 .maxAnisotropy(1.0f));
 
         try {
-            commonLayout = new DescriptorSetLayoutBuilder()
-                    .binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)// camera data
-                    .binding(1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)// funni acceleration buffer
-                    .binding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
-                    .binding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
-                    .binding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
-                    // Reordered these so output texture is last... this means you can dynamically add more output textures without messing other ids
-                    .binding(6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, VK_SHADER_STAGE_ALL)// output texture
-                    .build(ctx);
-
-            DescriptorSetLayoutBuilder ctexLayoutBuilder = new DescriptorSetLayoutBuilder();
-            for (int i = 0; i < customTextureViews.length; i++) {
-                ctexLayoutBuilder.binding(i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL);
-            }
-
-            customtexLayout = ctexLayoutBuilder.build(ctx);
-
-            DescriptorSetLayoutBuilder ssboLayoutBuilder = new DescriptorSetLayoutBuilder();
-            for (int id : ssboIds) {
-                ssboLayoutBuilder.binding(id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL);
-            }
-
-            storageBufferLayout = ssboLayoutBuilder.build(ctx);
-
-            //TODO: use frameahead count instead of just... 10
-            commonDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, commonLayout.types);
-            commonDescriptorPool.allocateSets(commonLayout);
-
-            customtexDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, customtexLayout.types);
-            customtexDescriptorPool.allocateSets(customtexLayout);
-
-            storageBufferDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, storageBufferLayout.types);
-            storageBufferDescriptorPool.allocateSets(storageBufferLayout);
-
             var commonSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
                 new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
                 new ShaderReflection.Binding("", 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, false),
@@ -329,46 +288,13 @@ public class VulkanPipeline {
             uboBuffer.unmap();
             uboBuffer.flush();
 
-            long commonSet = commonDescriptorPool.get(fidx);
-            long ctexSet = customtexDescriptorPool.get(fidx);
-            long ssboSet = storageBufferDescriptorPool.get(fidx);
-
-            var updater = new DescriptorUpdateBuilder(ctx, 7)
-                    .set(commonSet)
-                    .uniform(0, uboBuffer)
-                    .acceleration(1, tlas)
-                    .imageSampler(3, blockAtlasView.getView(), sampler)
-                    .imageSampler(4,
-                            blockAtlasNormalView.getView() != null ? blockAtlasNormalView.getView()
-                                    : placeholderNormalsView,
-                            sampler)
-                    .imageSampler(5,
-                            blockAtlasSpecularView.getView() != null ? blockAtlasSpecularView.getView()
-                                    : placeholderSpecularView,
-                            sampler);
-            List<VImageView> outImgViewList = new ArrayList<>(outImgs.size());
-            for (int i = 0; i < outImgs.size(); i++) {
-                int index = i;
-                outImgViewList.add(irisRenderTargetViews[i].getView(() -> outImgs.get(index)));
+            // Call getView() on shared image view trackers to ensure they are created
+            blockAtlasView.getView();
+            blockAtlasNormalView.getView();
+            blockAtlasSpecularView.getView();
+            for (var v : customTextureViews) {
+                v.getView();
             }
-            updater.imageStore(6, 0, outImgViewList);
-            updater.apply();
-
-            updater = new DescriptorUpdateBuilder(ctx, customTextureViews.length)
-                    .set(ctexSet);
-
-            for (int i = 0; i < customTextureViews.length; i++) {
-                updater.imageSampler(i, customTextureViews[i].getView(), ctexSampler);
-            }
-            updater.apply();
-
-            updater = new DescriptorUpdateBuilder(ctx, ssbos.length)
-                    .set(ssboSet);
-
-            for (ShaderStorageBuffer ssbo : ssbos) {
-                updater.buffer(ssbo.getIndex(), ((IVGBuffer) ssbo).getBuffer());
-            }
-            updater.apply();
 
             //TODO: dont use a single use pool for commands like this...
             var cmd = singleUsePool.createCommandBuffer();
@@ -392,23 +318,69 @@ public class VulkanPipeline {
                 }
             }
 
-            for (var pipeline : raytracePipelines) {
-                pipeline.pipeline.bind(cmd);
-                var sets = new TreeMap<Integer, Long>();
-                if (pipeline.commonSet != -1) {
-                    sets.put(pipeline.commonSet, commonSet);
+            for (var record : raytracePipelines) {
+                var pipeline = record.pipeline;
+                pipeline.bind(cmd);
+                var layouts = pipeline.reflection.getLayouts(); // Should be cached already
+                var sets = new long[layouts.size()];
+                if (record.commonSet != -1) {
+                    var commonSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.commonSet)).allocateSet();
+
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.commonSet))
+                            .set(commonSet.set)
+                            .uniform(0, uboBuffer)
+                            .acceleration(1, tlas)
+                            .imageSampler(3, blockAtlasView.getView(), sampler)
+                            .imageSampler(4,
+                                    blockAtlasNormalView.getView() != null ? blockAtlasNormalView.getView()
+                                            : placeholderNormalsView,
+                                    sampler)
+                            .imageSampler(5,
+                                    blockAtlasSpecularView.getView() != null ? blockAtlasSpecularView.getView()
+                                            : placeholderSpecularView,
+                                    sampler);
+                    List<VImageView> outImgViewList = new ArrayList<>(outImgs.size());
+                    for (int i = 0; i < outImgs.size(); i++) {
+                        int index = i;
+                        outImgViewList.add(irisRenderTargetViews[i].getView(() -> outImgs.get(index)));
+                    }
+                    updater.imageStore(6, 0, outImgViewList);
+                    updater.apply();
+
+                    sets[record.commonSet] = commonSet.set;
+                    cmd.addTransientResource(commonSet);
                 }
-                if (pipeline.geomSet != -1) {
-                    sets.put(pipeline.geomSet, accelerationManager.getGeometrySet());
+                if (record.geomSet != -1) {
+                    sets[record.geomSet] = accelerationManager.getGeometrySet();
                 }
-                if (pipeline.customTexSet != -1) {
-                    sets.put(pipeline.customTexSet, ctexSet);
+                if (record.customTexSet != -1) {
+                    var ctexSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.customTexSet)).allocateSet();
+
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.customTexSet))
+                            .set(ctexSet.set);
+                    for (int i = 0; i < customTextureViews.length; i++) {
+                        updater.imageSampler(i, customTextureViews[i].getView(), ctexSampler);
+                    }
+                    updater.apply();
+
+                    sets[record.customTexSet] = ctexSet.set;
+                    cmd.addTransientResource(ctexSet);
                 }
-                if (pipeline.ssboSet != -1) {
-                    sets.put(pipeline.ssboSet, ssboSet);
+                if (record.ssboSet != -1) {
+                    var ssboSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.ssboSet)).allocateSet();
+
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.ssboSet))
+                            .set(ssboSet.set);
+                    for (ShaderStorageBuffer ssbo : ssbos) {
+                        updater.buffer(ssbo.getIndex(), ((IVGBuffer) ssbo).getBuffer());
+                    }
+                    updater.apply();
+
+                    sets[record.ssboSet] = ssboSet.set;
+                    cmd.addTransientResource(ssboSet);
                 }
-                pipeline.pipeline.bindDSet(cmd, sets.values().stream().mapToLong(a->a).toArray());
-                pipeline.pipeline.trace(cmd, outImgs.get(0).width, outImgs.get(0).height, 1);
+                pipeline.bindDSet(cmd, sets);
+                pipeline.trace(cmd, outImgs.get(0).width, outImgs.get(0).height, 1);
 
                 // Barrier on the output images
                 for (var img : outImgs) {
@@ -459,23 +431,10 @@ public class VulkanPipeline {
     }
 
     public void destory() {
-        for (var pass : raytracePipelines) {
-            if (pass != null) {
-                pass.pipeline.free();
-            }
-        }
-        if (commonLayout != null)
-            commonLayout.free();
-        if (customtexLayout != null)
-            customtexLayout.free();
-        if (storageBufferLayout != null)
-            storageBufferLayout.free();
-        if (commonDescriptorPool != null)
-            commonDescriptorPool.free();
-        if (customtexDescriptorPool != null)
-            customtexDescriptorPool.free();
-        if (storageBufferDescriptorPool != null)
-            storageBufferDescriptorPool.free();
+        vkDeviceWaitIdle(ctx.device);
+
+        // Check pending fences first
+        // Then destroy the cmd pool (which destroys linked transient resources)
         ctx.sync.checkFences();
         if (singleUsePool != null) {
             singleUsePool.doReleases();
@@ -483,6 +442,13 @@ public class VulkanPipeline {
         }
         if (previousSemaphore != null) {
             previousSemaphore.free();
+        }
+        // Finally destroy the pipelines
+        // (Which destroys the descriptor set layouts & releases the VTypedDescriptorPool)
+        for (var pass : raytracePipelines) {
+            if (pass != null) {
+                pass.pipeline.free();
+            }
         }
 
         for (SharedImageViewTracker customTexView : customTextureViews) {
