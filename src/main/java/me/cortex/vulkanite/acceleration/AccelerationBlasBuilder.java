@@ -8,11 +8,18 @@ import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
+import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VQueryPool;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
+import me.cortex.vulkanite.lib.pipeline.ComputePipelineBuilder;
+import me.cortex.vulkanite.lib.pipeline.VComputePipeline;
+import me.cortex.vulkanite.lib.shader.ShaderCompiler;
+import me.cortex.vulkanite.lib.shader.ShaderModule;
+import me.cortex.vulkanite.lib.shader.VShader;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import me.jellysquid.mods.sodium.client.render.chunk.data.BuiltSectionMeshParts;
 import me.jellysquid.mods.sodium.client.render.chunk.terrain.DefaultTerrainRenderPasses;
@@ -35,7 +42,7 @@ import static org.lwjgl.vulkan.VK12.*;
 
 public class AccelerationBlasBuilder {
     private final VContext context;
-    private record BLASTriangleData(int quadCount, NativeBuffer geometry, int geometryFlags) {}
+    private record BLASTriangleData(int quadCount, int geometryFlags) {}
     private record BLASBuildJob(List<BLASTriangleData> geometries, JobPassThroughData data) {}
     public record BLASBuildResult(VAccelerationStructure structure, JobPassThroughData data) {}
     public record BLASBatchResult(List<BLASBuildResult> results, VSemaphore semaphore) { }
@@ -50,12 +57,74 @@ public class AccelerationBlasBuilder {
     private final Semaphore awaitingJobBatchess = new Semaphore(0);//Note: this is done to avoid spin locking on the job consumer
     private final ConcurrentLinkedDeque<List<BLASBuildJob>> batchedJobs = new ConcurrentLinkedDeque<>();
 
+    private final VComputePipeline gpuVertexDecodePipeline;
+
     public AccelerationBlasBuilder(VContext context, int asyncQueue, Consumer<BLASBatchResult> resultConsumer) {
         this.sinlgeUsePool = context.cmd.createSingleUsePool();
         this.queryPool = new VQueryPool(context.device, 10000, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR);
         this.context = context;
         this.asyncQueue = asyncQueue;
         this.resultConsumer = resultConsumer;
+
+        var decodeShader = VShader.compileLoad(context, """
+                        #version 460
+                        #extension GL_EXT_buffer_reference : require
+                        #extension GL_EXT_shader_8bit_storage : require
+                        #extension GL_EXT_shader_explicit_arithmetic_types : require
+                        #extension GL_EXT_shader_16bit_storage : require
+                                        
+                        layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+                                        
+                        struct InputVertex {
+                            u16vec4 position;
+                            u8vec4 color;
+                            u16vec2 blockTexture;
+                            u16vec2 lightTexture;
+                            u16vec2 midTexCoord;
+                            i8vec4 tangent;
+                            i8vec3 normal;
+                            int8_t padA__;
+                            i16vec2 blockId;
+                            i8vec3 midBlock;
+                            int8_t padB__;
+                        };
+                        
+                        layout(buffer_reference, std430) buffer InputVertices {
+                            InputVertex vertices[];
+                        };
+                        
+                        layout(buffer_reference, std430) buffer OutputVertices {
+                            float vertices[];
+                        };
+                        
+                        layout(push_constant) uniform PushConstants {
+                            uint32_t nVertices;
+                            uint64_t inAddr;
+                            uint64_t outAddr;
+                        };
+                                        
+                        void main() {
+                            uint32_t idx = gl_GlobalInvocationID.x;
+                            uint32_t gridSize = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+                            InputVertices inputs = InputVertices(inAddr);
+                            OutputVertices outputs = OutputVertices(outAddr);
+                            for (idx; idx < nVertices; idx += gridSize) {
+                                vec3 position = vec3(inputs.vertices[idx].position.xyz) * (32.0 / 65536.0) - 8.0;
+                                outputs.vertices[idx * 3 + 0] = position.x;
+                                outputs.vertices[idx * 3 + 1] = position.y;
+                                outputs.vertices[idx * 3 + 2] = position.z;
+                            }
+                        }
+                        """,
+                VK_SHADER_STAGE_COMPUTE_BIT);
+
+        var decodePipeBuilder = new ComputePipelineBuilder();
+        decodePipeBuilder.addPushConstantRange(8 * 3, 0);
+        decodePipeBuilder.set(decodeShader.named());
+        gpuVertexDecodePipeline = decodePipeBuilder.build(context);
+
+        decodeShader.free();
+
         worker = new Thread(this::run);
         worker.setName("Acceleration blas worker");
         worker.start();
@@ -121,13 +190,9 @@ public class AccelerationBlasBuilder {
 
                     long buildBufferSize = 0;
 
+                    int vertexStride = 4 * 3;
                     for (var geometry : job.geometries) {
-                        if (geometry.geometry.getLength() <= 0) {
-                            throw new IllegalStateException("Geometry size <= 0");
-                        }
-
-                        buildBufferSize += geometry.geometry.getLength();
-                        //After we copy it over, we can free the native buffer
+                        buildBufferSize += geometry.quadCount * 4 * vertexStride;
                     }
 
                     if (buildBufferSize <= 0) {
@@ -150,9 +215,17 @@ public class AccelerationBlasBuilder {
                         var geometryInfo = geometryInfos.get().sType$Default();
                         var br = brs.get();
 
-                        uploadBuildCmd.encodeDataUpload(context.memory,
-                                MemoryUtil.memAddress(geometry.geometry.getDirectBuffer()), buildBuffer,
-                                buildBufferOffset, geometry.geometry.getLength());
+                        // We know the geometry data has been uploaded
+                        // 0: n_vertices
+                        // 1: inAddr
+                        // 2: outAddr
+                        var pushConstant = new long[3];
+                        pushConstant[0] = geometry.quadCount * 4;
+                        pushConstant[1] = job.data.geometryBuffers().get(geoIdx).deviceAddress();
+                        pushConstant[2] = buildBufferAddr + buildBufferOffset;
+                        vkCmdBindPipeline(uploadBuildCmd.buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpuVertexDecodePipeline.pipeline());
+                        vkCmdPushConstants(uploadBuildCmd.buffer, gpuVertexDecodePipeline.layout(), VK_SHADER_STAGE_ALL, 0, pushConstant);
+                        vkCmdDispatch(uploadBuildCmd.buffer, Math.min((geometry.quadCount * 4 + 255) / 256, 128), 1, 1);
 
                         VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(context,
                                 uploadBuildCmd,
@@ -161,8 +234,7 @@ public class AccelerationBlasBuilder {
 
                         VkDeviceOrHostAddressConstKHR vertexData = VkDeviceOrHostAddressConstKHR.calloc(stack)
                                 .deviceAddress(buildBufferAddr + buildBufferOffset);
-                        int vertexFormat = VK_FORMAT_R16G16B16_SFLOAT;//VK_FORMAT_R32G32B32_SFLOAT;
-                        int vertexStride = 2*3;
+                        int vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
 
                         geometryInfo.geometry(VkAccelerationStructureGeometryDataKHR.calloc(stack)
                                 .triangles(VkAccelerationStructureGeometryTrianglesDataKHR.calloc(stack)
@@ -176,15 +248,14 @@ public class AccelerationBlasBuilder {
                                         .indexData(indexData)
                                         .indexType(indexType)))
                                 .geometryType(VK_GEOMETRY_TYPE_TRIANGLES_KHR)
-                                .flags(geometry.geometryFlags);//TODO: ADD VkGeometryFlagsKHR VK_GEOMETRY_OPAQUE_BIT_KHR
+                                .flags(geometry.geometryFlags);
 
                         maxPrims.put(geometry.quadCount * 2);
                         br.primitiveCount(geometry.quadCount * 2);
                         //maxPrims.put(2);
                         //br.primitiveCount(2);
 
-                        buildBufferOffset += geometry.geometry.getLength();
-                        geometry.geometry.free();
+                        buildBufferOffset += geometry.quadCount * 4 * vertexStride;
                     }
 
                     uploadBuildCmd.encodeBufferBarrier(buildBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -370,9 +441,9 @@ public class AccelerationBlasBuilder {
             List<BLASTriangleData> buildData = new ArrayList<>();
             List<VBuffer> geometryBuffers = new ArrayList<>();
             for (var entry : acbr.entrySet()) {
-                // TODO: dont hardcode the stride size
                 int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0;
-                buildData.add(new BLASTriangleData(entry.getValue().quadCount(), entry.getValue().data(), flag));
+                buildData.add(new BLASTriangleData(entry.getValue().quadCount(), flag));
+                // TODO: Just don't create this data in the first place
 
                 var geometry = cbr.getMesh(entry.getKey());
                 if (geometry.getVertexData().getLength() == 0) {

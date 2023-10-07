@@ -33,9 +33,6 @@ public abstract class MixinRenderSectionManager {
     @Redirect(method = "destroy", at = @At(value = "INVOKE", target = "Lme/jellysquid/mods/sodium/client/render/chunk/compile/ChunkBuildOutput;delete()V"))
     private void destroyAccelerationData(ChunkBuildOutput instance) {
         var data = ((IAccelerationBuildResult)instance).getAccelerationGeometryData();
-        if (data != null) {
-            data.values().forEach(entry->entry.data().free());
-        }
         instance.delete();
         //TODO: need to ingest and cleanup all the blas builds and tlas updates
     }
@@ -51,19 +48,7 @@ public abstract class MixinRenderSectionManager {
                 ChunkBuildOutput previous = map.get(render);
                 if (previous == null || previous.buildTime < output.buildTime) {
                     var prev = map.put(render, output);
-                    if (prev != null) {
-                        var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
-                        data.values().forEach(a->a.data().free());
-                    }
-                } else {
-                    //Else need to free the injected result
-                    var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
-                    data.values().forEach(a->a.data().free());
                 }
-            } else {
-                //Else need to free the injected result
-                var data = ((IAccelerationBuildResult)output).getAccelerationGeometryData();
-                data.values().forEach(a->a.data().free());
             }
         }
         if (!map.values().isEmpty()) {
