@@ -5,12 +5,16 @@ import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
 import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorPool;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
+import me.cortex.vulkanite.lib.descriptors.VTypedDescriptorPool;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import net.minecraft.util.Util;
 import org.lwjgl.vulkan.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import static org.lwjgl.vulkan.EXTDebugUtils.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
@@ -50,6 +54,7 @@ public class Vulkanite {
     private final ArbitarySyncPointCallback fencedCallback = new ArbitarySyncPointCallback();
 
     private final AccelerationManager accelerationManager;
+    private final HashMap<VDescriptorSetLayout, VTypedDescriptorPool> descriptorPools = new HashMap<>();
 
     public Vulkanite() {
         ctx = createVulkanContext();
@@ -68,6 +73,24 @@ public class Vulkanite {
          */
 
         accelerationManager.chunkBuilds(results);
+    }
+
+    public VTypedDescriptorPool getPoolByLayout(VDescriptorSetLayout layout) {
+        synchronized (descriptorPools) {
+            if (!descriptorPools.containsKey(layout)) {
+                descriptorPools.put(layout, new VTypedDescriptorPool(ctx, layout, 0));
+            }
+            return descriptorPools.get(layout);
+        }
+    }
+
+    public void removePoolByLayout(VDescriptorSetLayout layout) {
+        synchronized (descriptorPools) {
+            if (descriptorPools.containsKey(layout)) {
+                descriptorPools.get(layout).free();
+                descriptorPools.remove(layout);
+            }
+        }
     }
 
     public void sectionRemove(RenderSection section) {
@@ -92,6 +115,9 @@ public class Vulkanite {
     }
 
     public void destroy() {
+        for (var pool : descriptorPools.values()) {
+            pool.free();
+        }
         accelerationManager.cleanup();
     }
 

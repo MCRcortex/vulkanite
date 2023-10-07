@@ -25,6 +25,8 @@ import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_PIPELINE_STAGE_ACCELE
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
 
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 
 //TODO: Track with TrackedResourceObject but need to be careful due to how the freeing works
@@ -32,12 +34,12 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
     private final VCommandPool pool;
     public final VkCommandBuffer buffer;
 
-    private LinkedList<VBuffer> transientBuffers;
+    private HashSet<TrackedResourceObject> transientResources;
 
     VCmdBuff(VCommandPool pool, VkCommandBuffer buff) {
         this.pool = pool;
         this.buffer = buff;
-        this.transientBuffers = new LinkedList<>();
+        this.transientResources = new HashSet<>();
     }
 
     //Enqueues the pool to be freed by the owning thread
@@ -69,7 +71,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             vkCmdCopyBuffer(buffer, staging.buffer(), dest.buffer(), copy);
         }
 
-        transientBuffers.add(staging);
+        transientResources.add(staging);
     }
 
     public void encodeImageUpload(MemoryManager manager, long src, VImage dest, long srcSize, int destLayout) {
@@ -89,7 +91,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             vkCmdCopyBufferToImage(buffer, staging.buffer(), dest.image(), destLayout, copy);
         }
 
-        transientBuffers.add(staging);
+        transientResources.add(staging);
     }
 
     public void encodeMemoryBarrier() {
@@ -100,6 +102,10 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             vkCmdPipelineBarrier(this.buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                     0, barrier, null, null);
         }
+    }
+
+    public void addTransientResource(TrackedResourceObject resource) {
+        transientResources.add(resource);
     }
 
     public static int dstStageToAccess(int dstStage) {
@@ -200,8 +206,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
     void freeInternal() {
         free0();
         vkFreeCommandBuffers(pool.device, pool.pool, buffer);
-        while (!transientBuffers.isEmpty()) {
-            transientBuffers.removeFirst().free();
-        }
+        transientResources.forEach(TrackedResourceObject::free);
+        transientResources.clear();
     }
 }
