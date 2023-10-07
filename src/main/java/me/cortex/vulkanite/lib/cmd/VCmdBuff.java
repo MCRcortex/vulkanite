@@ -8,6 +8,7 @@ import me.cortex.vulkanite.lib.memory.VImage;
 import org.lwjgl.system.Pointer;
 import org.lwjgl.vulkan.VK;
 import org.lwjgl.vulkan.VkBufferCopy;
+import org.lwjgl.vulkan.VkBufferImageCopy;
 import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
@@ -66,6 +67,26 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             var copy = VkBufferCopy.calloc(1, stack);
             copy.get(0).srcOffset(0).dstOffset(destOffset).size(size);
             vkCmdCopyBuffer(buffer, staging.buffer(), dest.buffer(), copy);
+        }
+
+        transientBuffers.add(staging);
+    }
+
+    public void encodeImageUpload(MemoryManager manager, long src, VImage dest, long srcSize, int destLayout) {
+        VBuffer staging = manager.createBuffer(srcSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0,
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        long ptr = staging.map();
+        MemoryUtil.memCopy(src, ptr, srcSize);
+        staging.unmap();
+
+        try (var stack = stackPush()) {
+            var copy = VkBufferImageCopy.calloc(1, stack);
+            copy.get(0).bufferOffset(0).bufferImageHeight(0).bufferRowLength(0)
+                    .imageOffset(o -> o.set(0, 0, 0))
+                    .imageExtent(extent -> extent.set(dest.width, dest.height, dest.depth))
+                    .imageSubresource(s -> s.aspectMask(VK_IMAGE_ASPECT_COLOR_BIT).baseArrayLayer(0).layerCount(1).mipLevel(0));
+            vkCmdCopyBufferToImage(buffer, staging.buffer(), dest.image(), destLayout, copy);
         }
 
         transientBuffers.add(staging);
@@ -160,7 +181,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             barrier.get(0).sType$Default().srcAccessMask(srcStageToAccess(srcStage))
                     .dstAccessMask(dstStageToAccess(dstStage)).oldLayout(src).newLayout(dst).image(image.image())
                     .subresourceRange().aspectMask(aspectMask).baseMipLevel(0).levelCount(mipLevels).baseArrayLayer(0)
-                    .layerCount(1);
+                    .layerCount(VK_REMAINING_ARRAY_LAYERS);
             vkCmdPipelineBarrier(this.buffer, srcStage, dstStage,
                     0, null, null, barrier);
         }

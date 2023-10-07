@@ -92,8 +92,9 @@ public class MemoryManager {
                     // Everything larger than the shared block size must be dedicated allocation
                     long memorySize = dedicated ? (allocation.ai.offset() + allocation.ai.size()) : sharedBlockSize;
 
-                    if (memorySize > sharedBlockSize) {
-                        // Section 6.2 of the OpenGL 4.5 spec
+                    if (dedicated) {
+                        // https://registry.khronos.org/OpenGL/extensions/EXT/EXT_external_objects.txt
+                        // Section 6.2
                         glMemoryObjectParameteriEXT(newMemoryObject, GL_DEDICATED_MEMORY_OBJECT_EXT, GL_TRUE);
                         _CHECK_GL_ERROR_();
                     }

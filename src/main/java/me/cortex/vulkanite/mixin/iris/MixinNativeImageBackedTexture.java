@@ -22,7 +22,6 @@ import java.nio.ByteBuffer;
 
 import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.vulkan.VK10.*;
-import static org.lwjgl.vulkan.VK10.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 @Mixin(value = NativeImageBackedTexture.class, remap = false)
 public abstract class MixinNativeImageBackedTexture extends AbstractTexture implements IVGImage {
@@ -53,6 +52,10 @@ public abstract class MixinNativeImageBackedTexture extends AbstractTexture impl
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         setVGImage(img);
+
+        Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {
+            cmdbuf.encodeImageTransition(img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+        });
 
         GlStateManager._bindTexture(img.glId);
     }
