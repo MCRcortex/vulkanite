@@ -71,9 +71,9 @@ public class MixinNewWorldRenderingPipeline {
             for (int i = 0; i < passes.length; i++) {
                 rtShaderPasses[i] = new RaytracingShaderSet(ctx, passes[i]);
             }
-
-            pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses, set.getPackDirectives().getBufferObjects().keySet().toArray(new int[0]), getCustomTextures());
         }
+        // Still create this, later down the line we might add Vulkan compute pipelines or mesh shading, etc.
+        pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses, set.getPackDirectives().getBufferObjects().keySet().toArray(new int[0]), getCustomTextures());
     }
 
     @Inject(method = "renderShadows", at = @At("TAIL"))
@@ -93,14 +93,14 @@ public class MixinNewWorldRenderingPipeline {
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))
     private void destory(CallbackInfo ci) {
+        ctx.cmd.waitQueueIdle(0);
         if (rtShaderPasses != null) {
-            ctx.cmd.waitQueueIdle(0);
             for (var pass : rtShaderPasses) {
                 pass.delete();
             }
-            pipeline.destory();
-            rtShaderPasses = null;
-            pipeline = null;
         }
+        pipeline.destory();
+        rtShaderPasses = null;
+        pipeline = null;
     }
 }
