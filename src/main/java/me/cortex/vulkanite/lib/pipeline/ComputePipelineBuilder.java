@@ -31,6 +31,13 @@ public class ComputePipelineBuilder {
         return this;
     }
 
+    private record PushConstant(int size, int offset) {}
+    private List<PushConstant> pushConstants = new ArrayList<>();
+
+    public void addPushConstantRange(int size, int offset) {
+        pushConstants.add(new PushConstant(size, offset));
+    }
+
     public VComputePipeline build(VContext context) {
         try (var stack = stackPush()) {
 
@@ -39,6 +46,18 @@ public class ComputePipelineBuilder {
             {
                 //TODO: cleanup and add push constants
                 layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(a->a.layout).toArray()));
+            }
+
+            if (pushConstants.size() > 0) {
+                var pushConstantRanges = VkPushConstantRange.calloc(pushConstants.size(), stack);
+                for (int i = 0; i < pushConstants.size(); i++) {
+                    var pushConstant = pushConstants.get(i);
+                    pushConstantRanges.get(i)
+                            .stageFlags(VK_SHADER_STAGE_ALL)
+                            .offset(pushConstant.offset)
+                            .size(pushConstant.size);
+                }
+                layoutCreateInfo.pPushConstantRanges(pushConstantRanges);
             }
 
             LongBuffer pLayout = stack.mallocLong(1);

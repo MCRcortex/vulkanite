@@ -8,6 +8,7 @@ import me.cortex.vulkanite.lib.memory.VImage;
 import org.lwjgl.system.Pointer;
 import org.lwjgl.vulkan.VK;
 import org.lwjgl.vulkan.VkBufferCopy;
+import org.lwjgl.vulkan.VkBufferImageCopy;
 import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
@@ -24,6 +25,8 @@ import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_PIPELINE_STAGE_ACCELE
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
 
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
 
 //TODO: Track with TrackedResourceObject but need to be careful due to how the freeing works
@@ -31,12 +34,12 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
     private final VCommandPool pool;
     public final VkCommandBuffer buffer;
 
-    private LinkedList<VBuffer> transientBuffers;
+    private HashSet<TrackedResourceObject> transientResources;
 
     VCmdBuff(VCommandPool pool, VkCommandBuffer buff) {
         this.pool = pool;
         this.buffer = buff;
-        this.transientBuffers = new LinkedList<>();
+        this.transientResources = new HashSet<>();
     }
 
     //Enqueues the pool to be freed by the owning thread
@@ -68,7 +71,27 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             vkCmdCopyBuffer(buffer, staging.buffer(), dest.buffer(), copy);
         }
 
-        transientBuffers.add(staging);
+        transientResources.add(staging);
+    }
+
+    public void encodeImageUpload(MemoryManager manager, long src, VImage dest, long srcSize, int destLayout) {
+        VBuffer staging = manager.createBuffer(srcSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0,
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        long ptr = staging.map();
+        MemoryUtil.memCopy(src, ptr, srcSize);
+        staging.unmap();
+
+        try (var stack = stackPush()) {
+            var copy = VkBufferImageCopy.calloc(1, stack);
+            copy.get(0).bufferOffset(0).bufferImageHeight(0).bufferRowLength(0)
+                    .imageOffset(o -> o.set(0, 0, 0))
+                    .imageExtent(extent -> extent.set(dest.width, dest.height, dest.depth))
+                    .imageSubresource(s -> s.aspectMask(VK_IMAGE_ASPECT_COLOR_BIT).baseArrayLayer(0).layerCount(1).mipLevel(0));
+            vkCmdCopyBufferToImage(buffer, staging.buffer(), dest.image(), destLayout, copy);
+        }
+
+        transientResources.add(staging);
     }
 
     public void encodeMemoryBarrier() {
@@ -79,6 +102,10 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             vkCmdPipelineBarrier(this.buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                     0, barrier, null, null);
         }
+    }
+
+    public void addTransientResource(TrackedResourceObject resource) {
+        transientResources.add(resource);
     }
 
     public static int dstStageToAccess(int dstStage) {
@@ -160,7 +187,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
             barrier.get(0).sType$Default().srcAccessMask(srcStageToAccess(srcStage))
                     .dstAccessMask(dstStageToAccess(dstStage)).oldLayout(src).newLayout(dst).image(image.image())
                     .subresourceRange().aspectMask(aspectMask).baseMipLevel(0).levelCount(mipLevels).baseArrayLayer(0)
-                    .layerCount(1);
+                    .layerCount(VK_REMAINING_ARRAY_LAYERS);
             vkCmdPipelineBarrier(this.buffer, srcStage, dstStage,
                     0, null, null, barrier);
         }
@@ -179,8 +206,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
     void freeInternal() {
         free0();
         vkFreeCommandBuffers(pool.device, pool.pool, buffer);
-        while (!transientBuffers.isEmpty()) {
-            transientBuffers.removeFirst().free();
-        }
+        transientResources.forEach(TrackedResourceObject::free);
+        transientResources.clear();
     }
 }

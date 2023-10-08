@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.descriptors;
 
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import org.lwjgl.system.Pointer;
@@ -32,6 +33,7 @@ public final class VDescriptorSetLayout extends TrackedResourceObject implements
 
     @Override
     public void free() {
+        Vulkanite.INSTANCE.removePoolByLayout(this);
         free0();
         vkDestroyDescriptorSetLayout(ctx.device, layout, null);
     }

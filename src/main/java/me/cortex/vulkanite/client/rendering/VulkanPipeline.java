@@ -20,6 +20,7 @@ import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
+import me.cortex.vulkanite.lib.shader.reflection.ShaderReflection;
 import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
 import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
 import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
@@ -40,6 +41,8 @@ import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.util.*;
 
 import static net.coderbot.iris.uniforms.CelestialUniforms.getSunAngle;
 import static net.coderbot.iris.uniforms.CelestialUniforms.isDay;
@@ -57,28 +60,26 @@ public class VulkanPipeline {
     private final AccelerationManager accelerationManager;
     private final VCommandPool singleUsePool;
 
-    private VRaytracePipeline[] raytracePipelines;
-    private VDescriptorSetLayout commonLayout;
-    private VDescriptorSetLayout customtexLayout;
-    private VDescriptorSetLayout storageBufferLayout;
-
-    private VDescriptorPool commonDescriptorPool;
-    private VDescriptorPool customtexDescriptorPool;
-    private VDescriptorPool storageBufferDescriptorPool;
+    private record RtPipeline(VRaytracePipeline pipeline, int commonSet, int geomSet, int customTexSet, int ssboSet) {}
+    private RtPipeline[] raytracePipelines;
 
     private final VSampler sampler;
     private final VSampler ctexSampler;
 
-    private final SharedImageViewTracker composite0mainView;
+    private final SharedImageViewTracker[] irisRenderTargetViews;
     private final SharedImageViewTracker[] customTextureViews;
     private final SharedImageViewTracker blockAtlasView;
     private final SharedImageViewTracker blockAtlasNormalView;
     private final SharedImageViewTracker blockAtlasSpecularView;
 
-    private final VImage placeholderImage;
-    private final VImageView placeholderImageView;
+    private final VImage placeholderSpecular;
+    private final VImageView placeholderSpecularView;
+    private final VImage placeholderNormals;
+    private final VImageView placeholderNormalsView;
 
     private int fidx;
+
+    private final int maxIrisRenderTargets = 16;
 
     public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds, VGImage[] customTextures) {
         this.ctx = ctx;
@@ -92,7 +93,10 @@ public class VulkanPipeline {
                 this.customTextureViews[i] = new SharedImageViewTracker(ctx, ()->customTextures[index]);
             }
 
-            this.composite0mainView = new SharedImageViewTracker(ctx, null);
+            this.irisRenderTargetViews = new SharedImageViewTracker[maxIrisRenderTargets];
+            for(int i = 0; i < maxIrisRenderTargets; i++) {
+                this.irisRenderTargetViews[i] = new SharedImageViewTracker(ctx, null);
+            }
             this.blockAtlasView = new SharedImageViewTracker(ctx, ()->{
                 AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
                 return ((IVGImage)blockAtlas).getVGImage();
@@ -107,16 +111,27 @@ public class VulkanPipeline {
                 PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
                 return ((IVGImage)holder.getSpecularTexture()).getVGImage();
             });
-            this.placeholderImage = ctx.memory.createImage2D(4, 4, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            this.placeholderImageView = new VImageView(ctx, placeholderImage);
+            this.placeholderSpecular = ctx.memory.createImage2D(4, 4, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            this.placeholderSpecularView = new VImageView(ctx, placeholderSpecular);
+            this.placeholderNormals = ctx.memory.createImage2D(4, 4, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+            this.placeholderNormalsView = new VImageView(ctx, placeholderNormals);
 
             try (var stack = stackPush()) {
+                var initZeros = stack.callocInt(4 * 4);
+                var initNormals = stack.mallocFloat(4 * 4 * 4);
+                for (int i = 0; i < 4 * 4; i++) {
+                    initNormals.put(new float[] {0.5f, 0.5f, 1.0f, 1.0f});
+                }
+                initNormals.rewind();
+
                 var cmd = singleUsePool.createCommandBuffer();
                 cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-
-                var barriers = VkImageMemoryBarrier.calloc(1, stack);
-                applyImageBarrier(barriers.get(0), placeholderImage, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_MEMORY_READ_BIT);
-                vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, null, null, barriers);
+                cmd.encodeImageTransition(placeholderSpecular, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                cmd.encodeImageTransition(placeholderNormals, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                cmd.encodeImageUpload(ctx.memory, MemoryUtil.memAddress(initZeros), placeholderSpecular, initZeros.capacity() * 4, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                cmd.encodeImageUpload(ctx.memory, MemoryUtil.memAddress(initNormals), placeholderNormals, initNormals.capacity() * 4, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                cmd.encodeImageTransition(placeholderSpecular, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                cmd.encodeImageTransition(placeholderNormals, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
                 cmd.end();
 
                 ctx.cmd.submit(0, VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(stack.pointers(cmd)));
@@ -148,78 +163,82 @@ public class VulkanPipeline {
                 .maxAnisotropy(1.0f));
 
         try {
-            commonLayout = new DescriptorSetLayoutBuilder()
-                    .binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)// camera data
-                    .binding(1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_ALL)// funni acceleration buffer
-                    .binding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture
-                    .binding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture normal
-                    .binding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL)//block texture specular
-                    // Reordered these so output texture is last... this means you can dynamically add more output textures without messing other ids
-                    .binding(6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_ALL)// output texture
-                    .build(ctx);
+            var commonSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
+                new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
+                new ShaderReflection.Binding("", 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, false),
+                new ShaderReflection.Binding("", 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                new ShaderReflection.Binding("", 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                new ShaderReflection.Binding("", 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, false),
+            });
 
-            DescriptorSetLayoutBuilder ctexLayoutBuilder = new DescriptorSetLayoutBuilder();
+            var geomSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
+               new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, true)
+            });
+
+            ArrayList<ShaderReflection.Binding> customTexBindings = new ArrayList<>();
             for (int i = 0; i < customTextureViews.length; i++) {
-                ctexLayoutBuilder.binding(i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_ALL);
+                customTexBindings.add(new ShaderReflection.Binding("", i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false));
             }
+            var customTexSetExpected = new ShaderReflection.Set(customTexBindings);
 
-            customtexLayout = ctexLayoutBuilder.build(ctx);
-
-            DescriptorSetLayoutBuilder ssboLayoutBuilder = new DescriptorSetLayoutBuilder();
+            ArrayList<ShaderReflection.Binding> ssboBindings = new ArrayList<>();
             for (int id : ssboIds) {
-                ssboLayoutBuilder.binding(id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL);
+                ssboBindings.add(new ShaderReflection.Binding("", id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, true));
             }
+            var ssboSetExpected = new ShaderReflection.Set(ssboBindings);
 
-            storageBufferLayout = ssboLayoutBuilder.build(ctx);
-
-            //TODO: use frameahead count instead of just... 10
-            commonDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, commonLayout.types);
-            commonDescriptorPool.allocateSets(commonLayout);
-
-            customtexDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, customtexLayout.types);
-            customtexDescriptorPool.allocateSets(customtexLayout);
-
-            storageBufferDescriptorPool = new VDescriptorPool(ctx, VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT, 10, storageBufferLayout.types);
-            storageBufferDescriptorPool.allocateSets(storageBufferLayout);
-
-            raytracePipelines = new VRaytracePipeline[passes.length];
+            raytracePipelines = new RtPipeline[passes.length];
             for (int i = 0; i < passes.length; i++) {
-                var builder = new RaytracePipelineBuilder()
-                        .addLayout(commonLayout)
-                        .addLayout(accelerationManager.getGeometryLayout())
-                        .addLayout(customtexLayout)
-                        .addLayout(storageBufferLayout);
+                var builder = new RaytracePipelineBuilder();
                 passes[i].apply(builder);
-                raytracePipelines[i] = builder.build(ctx, 1);
+                var pipe = builder.build(ctx, 1);
+
+                // Validate the layout
+                int commonSet = -1;
+                int geomSet = -1;
+                int customTexSet = -1;
+                int ssboSet = -1;
+
+                for (int setIdx = 0; setIdx < pipe.reflection.getNSets(); setIdx++) {
+                    var set = pipe.reflection.getSet(setIdx);
+                    if (set.validate(commonSetExpected)) {
+                        commonSet = setIdx;
+                    } else if (set.validate(geomSetExpected)) {
+                        geomSet = setIdx;
+                    } else if (set.validate(customTexSetExpected)) {
+                        customTexSet = setIdx;
+                    } else if (set.validate(ssboSetExpected)) {
+                        ssboSet = setIdx;
+                    } else {
+                        throw new RuntimeException("Raytracing pipeline " + i + " has an unexpected descriptor set layout at set " + setIdx);
+                    }
+                }
+
+                raytracePipelines[i] = new RtPipeline(pipe, commonSet, geomSet, customTexSet, ssboSet);
             }
 
         } catch (Exception e) {
+            System.err.println(e.getMessage());
+
+            e.printStackTrace();
+            destory();
             throw new RuntimeException(e);
         }
     }
-
-    private static void applyImageBarrier(VkImageMemoryBarrier barrier, VImage image, int targetLayout, int targetAccess) {
-        barrier.sType$Default()
-                .sType$Default()
-                .image(image.image())
-                .oldLayout(VK_IMAGE_LAYOUT_GENERAL)
-                .newLayout(targetLayout)
-                .srcAccessMask(0)
-                .dstAccessMask(targetAccess)
-                .subresourceRange(e->e.levelCount(1).layerCount(1).aspectMask(VK_IMAGE_ASPECT_COLOR_BIT));
-    }
-
 
     private VSemaphore previousSemaphore;
 
     private int frameId;
 
-    public void renderPostShadows(VGImage outImg, Camera camera, ShaderStorageBuffer[] ssbos) {
+    public void renderPostShadows(List<VGImage> outImgs, Camera camera, ShaderStorageBuffer[] ssbos) {
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
 
         var in = ctx.sync.createSharedBinarySemaphore();
-        in.glSignal(new int[0], new int[]{outImg.glId}, new int[]{GL_LAYOUT_GENERAL_EXT});
+        var outImgsGlIds = outImgs.stream().mapToInt(i -> i.glId).toArray();
+        var outImgsGlLayouts = outImgs.stream().mapToInt(i -> GL_LAYOUT_GENERAL_EXT).toArray();
+        in.glSignal(new int[0], outImgsGlIds, outImgsGlLayouts);
         glFlush();
 
         var tlasLink = ctx.sync.createBinarySemaphore();
@@ -269,62 +288,118 @@ public class VulkanPipeline {
             uboBuffer.unmap();
             uboBuffer.flush();
 
-            long commonSet = commonDescriptorPool.get(fidx);
-            long ctexSet = customtexDescriptorPool.get(fidx);
-            long ssboSet = storageBufferDescriptorPool.get(fidx);
-
-            var updater = new DescriptorUpdateBuilder(ctx, 7, placeholderImageView)
-                    .set(commonSet)
-                    .uniform(0, uboBuffer)
-                    .acceleration(1, tlas)
-                    .imageSampler(3, blockAtlasView.getView(), sampler)
-                    .imageSampler(4, blockAtlasNormalView.getView(), sampler)
-                    .imageSampler(5, blockAtlasSpecularView.getView(), sampler)
-                    .imageStore(6, composite0mainView.getView(()->outImg));
-            updater.apply();
-
-            updater = new DescriptorUpdateBuilder(ctx, customTextureViews.length, placeholderImageView)
-                    .set(ctexSet);
-
-            for (int i = 0; i < customTextureViews.length; i++) {
-                updater.imageSampler(i, customTextureViews[i].getView(), ctexSampler);
+            // Call getView() on shared image view trackers to ensure they are created
+            blockAtlasView.getView();
+            blockAtlasNormalView.getView();
+            blockAtlasSpecularView.getView();
+            for (var v : customTextureViews) {
+                v.getView();
             }
-            updater.apply();
-
-            updater = new DescriptorUpdateBuilder(ctx, ssbos.length, placeholderImageView)
-                    .set(ssboSet);
-
-            for (ShaderStorageBuffer ssbo : ssbos) {
-                updater.buffer(ssbo.getIndex(), ((IVGBuffer) ssbo).getBuffer());
-            }
-            updater.apply();
 
             //TODO: dont use a single use pool for commands like this...
             var cmd = singleUsePool.createCommandBuffer();
             cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
-            try (var stack = stackPush()) {
-                var barriers = VkImageMemoryBarrier.calloc(4 + customTextureViews.length, stack);
-                applyImageBarrier(barriers.get(), composite0mainView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_ACCESS_SHADER_WRITE_BIT);
-                applyImageBarrier(barriers.get(), blockAtlasView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+            {
+                // Put barriers on images & transition to the optimal layout
+                // These layouts also need to match the descriptor sets
+                for (var img : outImgs) {
+                    cmd.encodeImageTransition(img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+                }
+                cmd.encodeImageTransition(blockAtlasView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+
                 var image = blockAtlasNormalView.getImage();
-                if (image != null) applyImageBarrier(barriers.get(), image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+                if (image != null) cmd.encodeImageTransition(image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
                 image = blockAtlasSpecularView.getImage();
-                if (image != null) applyImageBarrier(barriers.get(), image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+                if (image != null) cmd.encodeImageTransition(image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
 
                 for(SharedImageViewTracker customtexView : customTextureViews) {
-                   applyImageBarrier(barriers.get(), customtexView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_ACCESS_SHADER_READ_BIT);
+                   cmd.encodeImageTransition(customtexView.getImage(), VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
                 }
-
-                barriers.limit(barriers.position());
-                barriers.rewind();
-                vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 0, null, null, barriers);
             }
 
-            for (var pipeline : raytracePipelines) {
+            for (var record : raytracePipelines) {
+                var pipeline = record.pipeline;
                 pipeline.bind(cmd);
-                pipeline.bindDSet(cmd, commonSet, accelerationManager.getGeometrySet(), ctexSet, ssboSet);
-                pipeline.trace(cmd, outImg.width, outImg.height, 1);
+                var layouts = pipeline.reflection.getLayouts(); // Should be cached already
+                var sets = new long[layouts.size()];
+                if (record.commonSet != -1) {
+                    var commonSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.commonSet)).allocateSet();
+
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.commonSet))
+                            .set(commonSet.set)
+                            .uniform(0, uboBuffer)
+                            .acceleration(1, tlas)
+                            .imageSampler(3, blockAtlasView.getView(), sampler)
+                            .imageSampler(4,
+                                    blockAtlasNormalView.getView() != null ? blockAtlasNormalView.getView()
+                                            : placeholderNormalsView,
+                                    sampler)
+                            .imageSampler(5,
+                                    blockAtlasSpecularView.getView() != null ? blockAtlasSpecularView.getView()
+                                            : placeholderSpecularView,
+                                    sampler);
+                    List<VImageView> outImgViewList = new ArrayList<>(outImgs.size());
+                    for (int i = 0; i < outImgs.size(); i++) {
+                        int index = i;
+                        outImgViewList.add(irisRenderTargetViews[i].getView(() -> outImgs.get(index)));
+                    }
+                    updater.imageStore(6, 0, outImgViewList);
+                    updater.apply();
+
+                    sets[record.commonSet] = commonSet.set;
+                    cmd.addTransientResource(commonSet);
+                }
+                if (record.geomSet != -1) {
+                    sets[record.geomSet] = accelerationManager.getGeometrySet();
+                }
+                if (record.customTexSet != -1) {
+                    var ctexSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.customTexSet)).allocateSet();
+
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.customTexSet))
+                            .set(ctexSet.set);
+                    for (int i = 0; i < customTextureViews.length; i++) {
+                        updater.imageSampler(i, customTextureViews[i].getView(), ctexSampler);
+                    }
+                    updater.apply();
+
+                    sets[record.customTexSet] = ctexSet.set;
+                    cmd.addTransientResource(ctexSet);
+                }
+                if (record.ssboSet != -1) {
+                    var ssboSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.ssboSet)).allocateSet();
+
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.ssboSet))
+                            .set(ssboSet.set);
+                    for (ShaderStorageBuffer ssbo : ssbos) {
+                        updater.buffer(ssbo.getIndex(), ((IVGBuffer) ssbo).getBuffer());
+                    }
+                    updater.apply();
+
+                    sets[record.ssboSet] = ssboSet.set;
+                    cmd.addTransientResource(ssboSet);
+                }
+                pipeline.bindDSet(cmd, sets);
+                pipeline.trace(cmd, outImgs.get(0).width, outImgs.get(0).height, 1);
+
+                // Barrier on the output images
+                for (var img : outImgs) {
+                    cmd.encodeImageTransition(img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+                }
+            }
+
+            {
+                // Transition images back to general layout (for OpenGL)
+                cmd.encodeImageTransition(blockAtlasView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+
+                var image = blockAtlasNormalView.getImage();
+                if (image != null) cmd.encodeImageTransition(image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+                image = blockAtlasSpecularView.getImage();
+                if (image != null) cmd.encodeImageTransition(image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+
+                for(SharedImageViewTracker customtexView : customTextureViews) {
+                   cmd.encodeImageTransition(customtexView.getImage(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+                }
             }
 
             cmd.end();
@@ -347,7 +422,7 @@ public class VulkanPipeline {
             });
         }
 
-        out.glWait(new int[0], new int[]{outImg.glId}, new int[]{GL_LAYOUT_GENERAL_EXT});
+        out.glWait(new int[0], outImgsGlIds, outImgsGlLayouts);
         glFlush();
 
         fidx++;
@@ -356,34 +431,54 @@ public class VulkanPipeline {
     }
 
     public void destory() {
-        for (var pass : raytracePipelines) {
-            pass.free();
-        }
-        commonLayout.free();
-        customtexLayout.free();
-        storageBufferLayout.free();
-        commonDescriptorPool.free();
-        customtexDescriptorPool.free();
-        storageBufferDescriptorPool.free();
+        vkDeviceWaitIdle(ctx.device);
+
+        // Check pending fences first
+        // Then destroy the cmd pool (which destroys linked transient resources)
         ctx.sync.checkFences();
-        singleUsePool.doReleases();
-        singleUsePool.free();
+        if (singleUsePool != null) {
+            singleUsePool.doReleases();
+            singleUsePool.free();
+        }
         if (previousSemaphore != null) {
             previousSemaphore.free();
         }
-
-        for (SharedImageViewTracker customTexView : customTextureViews) {
-            customTexView.free();
+        // Finally destroy the pipelines
+        // (Which destroys the descriptor set layouts & releases the VTypedDescriptorPool)
+        for (var pass : raytracePipelines) {
+            if (pass != null) {
+                pass.pipeline.free();
+            }
         }
 
-        composite0mainView.free();
-        blockAtlasView.free();
-        blockAtlasNormalView.free();
-        blockAtlasSpecularView.free();
-        placeholderImageView.free();
-        placeholderImage.free();
-        sampler.free();
-        ctexSampler.free();
+        for (SharedImageViewTracker customTexView : customTextureViews) {
+            if (customTexView != null)
+                customTexView.free();
+        }
+
+        for (SharedImageViewTracker irisRenderTargetView : irisRenderTargetViews) {
+            if (irisRenderTargetView != null)
+                irisRenderTargetView.free();
+        }
+
+        if (blockAtlasView != null)
+            blockAtlasView.free();
+        if (blockAtlasNormalView != null)
+            blockAtlasNormalView.free();
+        if (blockAtlasSpecularView != null)
+            blockAtlasSpecularView.free();
+        if (placeholderNormalsView != null)
+            placeholderNormalsView.free();
+        if (placeholderNormals != null)
+            placeholderNormals.free();
+        if (placeholderSpecularView != null)
+            placeholderSpecularView.free();
+        if (placeholderSpecular != null)
+            placeholderSpecular.free();
+        if (sampler != null)
+            sampler.free();
+        if (ctexSampler != null)
+            ctexSampler.free();
     }
 
 

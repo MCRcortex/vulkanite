@@ -15,6 +15,14 @@ public class VComputePipeline extends TrackedResourceObject {
         this.pipeline = pipeline;
     }
 
+    public long layout() {
+        return layout;
+    }
+
+    public long pipeline() {
+        return pipeline;
+    }
+
     @Override
     public void free() {
 
