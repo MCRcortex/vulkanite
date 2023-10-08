@@ -10,6 +10,7 @@ import org.lwjgl.vulkan.*;
 
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.util.HashMap;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -28,6 +29,62 @@ public class VmaAllocator {
     private final long sharedBlockSize;
 
     private final VkExportMemoryAllocateInfo exportMemoryAllocateInfo;
+
+    private record ImageFormatQuery(int format, int imageType, int tiling, int usage, int flags) {}
+    private record ImageFormatQueryResult(boolean supported, ImageFormatQuery updatedParams) {}
+    private HashMap<ImageFormatQuery, ImageFormatQueryResult> formatSupportCache = new HashMap<>();
+
+    boolean testModifyFormatSupport(VkDevice device, VkImageCreateInfo imageCreateInfo) {
+        var query = new ImageFormatQuery(imageCreateInfo.format(), imageCreateInfo.imageType(), imageCreateInfo.tiling(),
+                imageCreateInfo.usage(), imageCreateInfo.flags());
+        if (formatSupportCache.containsKey(query)) {
+            var res = formatSupportCache.get(query);
+            if (res.supported) {
+                imageCreateInfo.format(res.updatedParams.format);
+                imageCreateInfo.imageType(res.updatedParams.imageType);
+                imageCreateInfo.tiling(res.updatedParams.tiling);
+                imageCreateInfo.usage(res.updatedParams.usage);
+                imageCreateInfo.flags(res.updatedParams.flags);
+            }
+            return res.supported;
+        }
+
+        try (var stack = stackPush()) {
+            var pImageFormatProperties = VkImageFormatProperties.callocStack(stack);
+            var result = vkGetPhysicalDeviceImageFormatProperties(device.getPhysicalDevice(), imageCreateInfo.format(),
+                    imageCreateInfo.imageType(), imageCreateInfo.tiling(), imageCreateInfo.usage(),
+                    imageCreateInfo.flags(), pImageFormatProperties);
+            if (result == VK_SUCCESS) {
+                formatSupportCache.put(query, new ImageFormatQueryResult(true, query));
+                return true;
+            } else if (result != VK_ERROR_FORMAT_NOT_SUPPORTED) {
+                throw new RuntimeException("Failed to get image format properties");
+            }
+
+            // If storage image is set, try to un-set it
+            if ((imageCreateInfo.usage() & VK_IMAGE_USAGE_STORAGE_BIT) != 0) {
+                imageCreateInfo.usage(imageCreateInfo.usage() & ~VK_IMAGE_USAGE_STORAGE_BIT);
+                boolean res = testModifyFormatSupport(device, imageCreateInfo);
+                if (res) {
+                    System.err.println("WARNING: Storage image usage was removed from " + imageCreateInfo.format() + " due to lack of support");
+                }
+                return res;
+            }
+
+            // If tiling is optimal, try linear
+            if (imageCreateInfo.tiling() == VK_IMAGE_TILING_OPTIMAL) {
+                imageCreateInfo.tiling(VK_IMAGE_TILING_LINEAR);
+                boolean res = testModifyFormatSupport(device, imageCreateInfo);
+                if (res) {
+                    System.err.println("WARNING: TILING_OPTIMAL was changed to TILING_LINEAR " + imageCreateInfo.format() + " due to lack of support");
+                }
+                return res;
+            }
+        }
+
+        formatSupportCache.put(query, new ImageFormatQueryResult(false, null));
+        return false;
+    }
 
     public VmaAllocator(VkDevice device, boolean enableDeviceAddresses, long sharedBlockSize, int sharedHandleType) {
         this.device = device;
@@ -172,6 +229,7 @@ public class VmaAllocator {
     }
 
     SharedImageAllocation allocShared(VkImageCreateInfo imageCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+        testModifyFormatSupport(device, imageCreateInfo);
         try (var stack = stackPush()) {
             LongBuffer pb = stack.callocLong(1);
             _CHECK_(vkCreateImage(device, imageCreateInfo, null, pb), "Failed to create VkBuffer");
@@ -197,6 +255,7 @@ public class VmaAllocator {
     }
 
     ImageAllocation alloc(long pool, VkImageCreateInfo imageCreateInfo, VmaAllocationCreateInfo allocationCreateInfo) {
+        testModifyFormatSupport(device, imageCreateInfo);
         try (var stack = stackPush()) {
             LongBuffer pi = stack.mallocLong(1);
             PointerBuffer pa = stack.mallocPointer(1);
