@@ -40,6 +40,7 @@ import org.joml.Vector4f;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
+import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.*;
@@ -61,7 +62,7 @@ public class VulkanPipeline {
     private final VCommandPool singleUsePool;
 
     private record RtPipeline(VRaytracePipeline pipeline, int commonSet, int geomSet, int customTexSet, int ssboSet) {}
-    private RtPipeline[] raytracePipelines;
+    private ArrayList<RtPipeline> raytracePipelines = new ArrayList<>();
 
     private final VSampler sampler;
     private final VSampler ctexSampler;
@@ -162,6 +163,10 @@ public class VulkanPipeline {
                 .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
                 .maxAnisotropy(1.0f));
 
+        if (passes == null) {
+            return;
+        }
+
         try {
             var commonSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
                 new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
@@ -188,7 +193,6 @@ public class VulkanPipeline {
             }
             var ssboSetExpected = new ShaderReflection.Set(ssboBindings);
 
-            raytracePipelines = new RtPipeline[passes.length];
             for (int i = 0; i < passes.length; i++) {
                 var builder = new RaytracePipelineBuilder();
                 passes[i].apply(builder);
@@ -215,7 +219,7 @@ public class VulkanPipeline {
                     }
                 }
 
-                raytracePipelines[i] = new RtPipeline(pipe, commonSet, geomSet, customTexSet, ssboSet);
+                raytracePipelines.add(new RtPipeline(pipe, commonSet, geomSet, customTexSet, ssboSet));
             }
 
         } catch (Exception e) {
@@ -244,6 +248,7 @@ public class VulkanPipeline {
         var tlasLink = ctx.sync.createBinarySemaphore();
 
         var tlas = accelerationManager.buildTLAS(in, tlasLink);
+
         if (tlas == null) {
             glFinish();
             tlasLink.free();
