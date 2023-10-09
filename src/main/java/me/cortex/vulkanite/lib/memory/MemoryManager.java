@@ -302,4 +302,8 @@ public class MemoryManager {
             return new VAccelerationStructure(device, pAccelerationStructure.get(0), buffer);
         }
     }
+
+    public void dumpStats() {
+        System.out.println("VMA JSON:\n" + allocator.dumpJson(false));
+    }
 }

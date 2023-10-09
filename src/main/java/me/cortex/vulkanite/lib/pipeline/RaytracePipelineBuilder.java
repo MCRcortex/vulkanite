@@ -189,6 +189,7 @@ public class RaytracePipelineBuilder {
                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR,
                         VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                         0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                sbtMap.setDebugUtilsObjectName("SBT");
                 long ptr = sbtMap.map();
 
                 // Groups in order of RayGen, Miss Groups, Hit Groups, and callable

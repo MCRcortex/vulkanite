@@ -8,7 +8,10 @@ import me.cortex.vulkanite.lib.shader.VShader;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.glfw.GLFWVidMode;
 import org.lwjgl.opengl.GL;
+import org.lwjgl.opengl.GL45;
+import org.lwjgl.opengl.GL45C;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VkPhysicalDeviceAccelerationStructureFeaturesKHR;
 import org.lwjgl.vulkan.VkPhysicalDeviceBufferDeviceAddressFeaturesKHR;
 import org.lwjgl.vulkan.VkPhysicalDeviceRayQueryFeaturesKHR;
@@ -17,6 +20,7 @@ import org.lwjgl.vulkan.VkPhysicalDeviceRayTracingPipelineFeaturesKHR;
 import java.io.File;
 import java.io.IOException;
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.nio.file.Files;
 import java.util.List;
 
@@ -102,6 +106,11 @@ public class Test {
                                 .sType$Default()
                                 .rayTracingPipeline(true)
                                 .rayTracingPipelineTraceRaysIndirect(true)
+                ), List.of(
+                        s-> {},
+                        s-> {},
+                        s-> {},
+                        s-> {}
                 ));
 
         var context = init.createContext();
@@ -117,7 +126,7 @@ public class Test {
         var pool = context.cmd.createSingleUsePool();
         pool.createCommandBuffer();
 
-        var mem = context.memory.createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 0,
+        var mem = context.memory.createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                         0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
         mem.map();
         mem.unmap();
@@ -126,6 +135,54 @@ public class Test {
 
         // SharedQuadVkIndexBuffer.getIndexBuffer(context, uploadCmd, 10000);
 
+        var srcBeegThing = MemoryUtil.nmemCalloc(2L << 30L, 1);
+        MemoryUtil.memSet(srcBeegThing, 35, 2L << 30L);
+
+        var fmlBuffer0 = context.memory.createBuffer(2L << 30L,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.cmd.executeWait(cmd -> {
+            cmd.encodeDataUpload(context.memory, srcBeegThing, fmlBuffer0, 0, 2L << 30L);
+        });
+
+        var fmlBuffer1 = context.memory.createBuffer(2L << 30L,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.cmd.executeWait(cmd -> {
+            cmd.encodeDataUpload(context.memory, srcBeegThing, fmlBuffer1, 0, 2L << 30L);
+        });
+
+        var fmlBuffer2 = context.memory.createBuffer(2L << 30L,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.cmd.executeWait(cmd -> {
+            cmd.encodeDataUpload(context.memory, srcBeegThing, fmlBuffer2, 0, 2L << 30L);
+        });
+
+        var fmlBuffer3 = context.memory.createBuffer(2L << 30L,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.cmd.executeWait(cmd -> {
+            cmd.encodeDataUpload(context.memory, srcBeegThing, fmlBuffer3, 0, 2L << 30L);
+        });
+
+        var fmlBuffer4 = context.memory.createBuffer(2L << 30L,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.cmd.executeWait(cmd -> {
+            cmd.encodeDataUpload(context.memory, srcBeegThing, fmlBuffer4, 0, 2L << 30L);
+        });
+
+
+        int glBeegBuf = GL45.glCreateBuffers();
+        GL45C.glNamedBufferData(glBeegBuf, 2L << 30L, GL45C.GL_STATIC_DRAW);
+        GL45C.glBindBufferBase(GL45C.GL_SHADER_STORAGE_BUFFER, 0, glBeegBuf);
+
+        var beegData = LongBuffer.allocate(2 << 30);
+        beegData.array()[4] = 69;
+        GL45C.glNamedBufferSubData(glBeegBuf, 0, beegData);
+
+        MemoryUtil.nmemFree(srcBeegThing);
 
         var layout = new DescriptorSetLayoutBuilder()
                 .binding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL)//camera data

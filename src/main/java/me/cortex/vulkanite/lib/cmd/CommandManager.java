@@ -3,6 +3,7 @@ package me.cortex.vulkanite.lib.cmd;
 import com.mojang.blaze3d.systems.RenderSystem;
 
 import io.netty.util.internal.shaded.org.jctools.queues.MessagePassingQueue.Consumer;
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
@@ -10,7 +11,9 @@ import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkQueue;
 import org.lwjgl.vulkan.VkSubmitInfo;
 
+import java.lang.management.ThreadInfo;
 import java.nio.LongBuffer;
+import java.util.HashMap;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
@@ -20,7 +23,14 @@ public class CommandManager {
     private final VkDevice device;
     private final VkQueue[] queues;
 
-    private final VCommandPool singleUsePool;
+    private final ThreadLocal<VCommandPool> threadLocalPool =
+        new ThreadLocal<VCommandPool>() {
+            @Override protected VCommandPool initialValue() {
+                var pool = createSingleUsePool();
+                pool.setDebugUtilsObjectName("Thread-local single use pool");
+                return pool;
+            }
+        };
 
     public CommandManager(VkDevice device, int queues) {
         this.device = device;
@@ -33,7 +43,6 @@ public class CommandManager {
                 this.queues[i] = new VkQueue(pQ.get(0), device);
             }
         }
-        this.singleUsePool = createSingleUsePool();
     }
 
     public VCommandPool createSingleUsePool() {
@@ -42,6 +51,10 @@ public class CommandManager {
 
     public VCommandPool createPool(int flags) {
         return new VCommandPool(device, flags);
+    }
+
+    public VCommandPool getSingleUsePool() {
+        return threadLocalPool.get();
     }
 
     public void submit(int queueId, VkSubmitInfo submit) {
@@ -64,7 +77,7 @@ public class CommandManager {
     }
 
     public void executeWait(Consumer<VCmdBuff> cmdbuf) {
-        var cmd = singleUsePool.createCommandBuffer();
+        var cmd = getSingleUsePool().createCommandBuffer();
         cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
         cmdbuf.accept(cmd);
         cmd.end();

@@ -50,7 +50,6 @@ public class AccelerationBlasBuilder {
     private final Thread worker;
     private final int asyncQueue;
     private final Consumer<BLASBatchResult> resultConsumer;
-    private final VCommandPool sinlgeUsePool;
 
     private final VQueryPool queryPool;
 
@@ -61,7 +60,6 @@ public class AccelerationBlasBuilder {
     private final VComputePipeline gpuVertexDecodePipeline;
 
     public AccelerationBlasBuilder(VContext context, int asyncQueue, Consumer<BLASBatchResult> resultConsumer) {
-        this.sinlgeUsePool = context.cmd.createSingleUsePool();
         this.queryPool = new VQueryPool(context.device, 10000, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR);
         this.context = context;
         this.asyncQueue = asyncQueue;
@@ -159,7 +157,8 @@ public class AccelerationBlasBuilder {
                     }
                 }
             }
-            sinlgeUsePool.doReleases();
+            var sinlgeUsePoolWorker = context.cmd.getSingleUsePool();
+            sinlgeUsePoolWorker.doReleases();
             if (jobs.size() > 100) {
                 System.err.println("EXCESSIVE JOBS FOR SOME REASON AAAAAAAAAA");
                 //while (true);
@@ -177,7 +176,7 @@ public class AccelerationBlasBuilder {
                 var scratchBuffers = new VBuffer[jobs.size()];
                 var accelerationStructures = new VAccelerationStructure[jobs.size()];
 
-                var uploadBuildCmd = sinlgeUsePool.createCommandBuffer();
+                var uploadBuildCmd = sinlgeUsePoolWorker.createCommandBuffer();
                 uploadBuildCmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
                 //Fill in the buildInfo and buildRanges
@@ -206,6 +205,7 @@ public class AccelerationBlasBuilder {
                                     | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                             0, 0);
+                    buildBuffer.setDebugUtilsObjectName("BLAS geometry buffer");
                     buffersToFree.add(buildBuffer);
                     var buildBufferAddr = buildBuffer.deviceAddress();
                     long buildBufferOffset = 0;
@@ -290,6 +290,7 @@ public class AccelerationBlasBuilder {
                     var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256, 0);
+                    scratch.setDebugUtilsObjectName("BLAS scratch buffer");
 
                     bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.deviceAddress()));
                     bi.dstAccelerationStructure(structure.structure);
@@ -341,7 +342,7 @@ public class AccelerationBlasBuilder {
                             b.free();
                         }
 
-                        sinlgeUsePool.releaseNow(uploadBuildCmd);
+                        sinlgeUsePoolWorker.releaseNow(uploadBuildCmd);
 
                         //We can destroy the fence here since we know its passed
                         buildFence.free();
@@ -359,7 +360,7 @@ public class AccelerationBlasBuilder {
 
                 //---------------------
                 {
-                    var cmd = sinlgeUsePool.createCommandBuffer();
+                    var cmd = sinlgeUsePoolWorker.createCommandBuffer();
                     cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
                     //Dont need a memory barrier cause submit ensures cache flushing already
@@ -394,7 +395,7 @@ public class AccelerationBlasBuilder {
                             as.free();
                         }
 
-                        sinlgeUsePool.releaseNow(cmd);
+                        cmd.enqueueFree();
                         fence.free();
                         link.free();
                     });
@@ -423,15 +424,17 @@ public class AccelerationBlasBuilder {
         var buff = context.memory.createBuffer(meshParts.getVertexData().getLength(),
                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        buff.setDebugUtilsObjectName("Terrain geometry buffer");
 
         cmd.encodeDataUpload(context.memory, MemoryUtil.memAddress(meshParts.getVertexData().getDirectBuffer()), buff, 0, meshParts.getVertexData().getLength());
 
         return buff;
     }
 
-    //Enqueues jobs of section blas builds
+    // Enqueues jobs of section blas builds
+    // NOTE: This is on a different thread!
     public void enqueue(List<ChunkBuildOutput> batch) {
-        var cmd = sinlgeUsePool.createCommandBuffer();
+        var cmd = context.cmd.getSingleUsePool().createCommandBuffer();
         boolean hasJobs = false;
 
         List<BLASBuildJob> jobs = new ArrayList<>(batch.size());
@@ -466,7 +469,9 @@ public class AccelerationBlasBuilder {
 
         if (hasJobs) {
             cmd.end();
-            context.cmd.submitOnceAndWait(asyncQueue, cmd);
+            // TODO: Which queue should this be submitted to?
+            // Should we move all uploads to the worker?
+            context.cmd.submitOnceAndWait(0, cmd);
         }
 
         if (jobs.isEmpty()) {

@@ -1,7 +1,9 @@
 package me.cortex.vulkanite.lib.memory;
 
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 
+import static org.lwjgl.vulkan.VK10.VK_OBJECT_TYPE_BUFFER;
 import static org.lwjgl.vulkan.VK10.VK_WHOLE_SIZE;
 
 public class VBuffer extends TrackedResourceObject {
@@ -45,5 +47,9 @@ public class VBuffer extends TrackedResourceObject {
 
     public long size() {
         return allocation.size();
+    }
+
+    public void setDebugUtilsObjectName(String name) {
+        Vulkanite.INSTANCE.getCtx().setDebugUtilsObjectName(buffer(), VK_OBJECT_TYPE_BUFFER, name);
     }
 }

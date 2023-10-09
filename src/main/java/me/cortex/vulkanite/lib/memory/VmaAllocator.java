@@ -101,6 +101,7 @@ public class VmaAllocator {
                             .set(device.getPhysicalDevice().getInstance(), device))
                     .vulkanApiVersion(VK_API_VERSION_1_2)
                     .flags(enableDeviceAddresses ? VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT : 0);
+            allocatorCreateInfo.flags(allocatorCreateInfo.flags() | VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT);
 
             PointerBuffer pAllocator = stack.pointers(0);
             if (vmaCreateAllocator(allocatorCreateInfo, pAllocator) != VK_SUCCESS) {
