@@ -8,10 +8,7 @@ import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
-import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
 import me.cortex.vulkanite.lib.descriptors.DescriptorUpdateBuilder;
-import me.cortex.vulkanite.lib.descriptors.VDescriptorPool;
-import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.memory.VImage;
@@ -21,32 +18,26 @@ import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
 import me.cortex.vulkanite.lib.shader.reflection.ShaderReflection;
+import me.cortex.vulkanite.mixin.iris.MixinCelestialUniforms;
+import me.cortex.vulkanite.mixin.iris.MixinCommonUniforms;
 import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
-import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
-import net.coderbot.iris.gl.buffer.ShaderStorageInfo;
 import net.coderbot.iris.texture.pbr.PBRTextureHolder;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
-import net.coderbot.iris.uniforms.CelestialUniforms;
+import net.coderbot.iris.uniforms.CommonUniforms;
+import net.coderbot.iris.uniforms.SystemTimeUniforms;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.CameraSubmersionType;
 import net.minecraft.client.texture.AbstractTexture;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.joml.Vector4f;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.*;
 
-import java.lang.reflect.Array;
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 import java.util.*;
 
-import static net.coderbot.iris.uniforms.CelestialUniforms.getSunAngle;
-import static net.coderbot.iris.uniforms.CelestialUniforms.isDay;
 import static org.lwjgl.opengl.EXTSemaphore.GL_LAYOUT_GENERAL_EXT;
 import static org.lwjgl.opengl.GL11C.glFinish;
 import static org.lwjgl.opengl.GL11C.glFlush;
@@ -233,9 +224,7 @@ public class VulkanPipeline {
 
     private VSemaphore previousSemaphore;
 
-    private int frameId;
-
-    public void renderPostShadows(List<VGImage> outImgs, Camera camera, ShaderStorageBuffer[] ssbos) {
+    public void renderPostShadows(List<VGImage> outImgs, Camera camera, ShaderStorageBuffer[] ssbos, MixinCelestialUniforms celestialUniforms) {
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
 
@@ -281,12 +270,12 @@ public class VulkanPipeline {
                 invProjMatrix.transformProject(+1, +1, 0, 1, tmpv3).get(12*Float.BYTES, bb);
                 invViewMatrix.get(Float.BYTES * 16, bb);
 
-                Uniforms.getSunPosition().get(Float.BYTES * 32, bb);
-                Uniforms.getMoonPosition().get(Float.BYTES * 36, bb);
+                celestialUniforms.invokeGetSunPosition().get(Float.BYTES * 32, bb);
+                celestialUniforms.invokeGetMoonPosition().get(Float.BYTES * 36, bb);
 
-                bb.putInt(Float.BYTES * 40, frameId++);
+                bb.putInt(Float.BYTES * 40, SystemTimeUniforms.COUNTER.getAsInt());
 
-                int flags = Uniforms.isEyeInWater()&3;
+                int flags = MixinCommonUniforms.invokeIsEyeInWater() & 3;
                 bb.putInt(Float.BYTES * 41, flags);
                 bb.rewind();
             }
