@@ -20,7 +20,6 @@
     "minecraft.MixinMinecraftClient",
     "minecraft.MixinResourceTexture",
     "minecraft.MixinSpriteAtlasTexture",
-    "minecraft.MixinWindow",
     "sodium.MixinRenderRegionManager",
     "sodium.MixinRenderSection",
     "sodium.MixinRenderSectionManager",

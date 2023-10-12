@@ -9,6 +9,7 @@ import me.cortex.vulkanite.lib.memory.VGImage;
 import net.minecraft.client.texture.AbstractTexture;
 import net.minecraft.client.texture.ResourceTexture;
 import net.minecraft.resource.ResourceManager;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL14;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,6 +27,7 @@ import static org.lwjgl.vulkan.VK10.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 public abstract class MixinResourceTexture extends AbstractTexture implements IVGImage {
     @Redirect(method = "upload", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/TextureUtil;prepareImage(IIII)V"))
     private void redirect(int id, int maxLevel, int width, int height) {
+        GlStateManager._bindTexture(0);
         RenderSystem.assertOnRenderThreadOrInit();
         if (getVGImage() != null) {
             System.err.println("Vulkan image already allocated, releasing");
@@ -40,7 +42,6 @@ public abstract class MixinResourceTexture extends AbstractTexture implements IV
         var img = Vulkanite.INSTANCE.getCtx().memory.createSharedImage(
                 width,
                 height,
-                1,
                 maxLevel + 1,
                 VK_FORMAT_R8G8B8A8_UNORM,
                 GL_RGBA8,
@@ -51,7 +52,6 @@ public abstract class MixinResourceTexture extends AbstractTexture implements IV
         Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {
             cmdbuf.encodeImageTransition(img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
         });
-
 
         GlStateManager._bindTexture(getGlId());
         if (maxLevel >= 0) {

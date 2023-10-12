@@ -114,9 +114,15 @@ public class AccelerationTLASManager {
             cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
             VFence fence = context.sync.createFence();
 
-            Pair<VAccelerationStructure, VBuffer> entityBuild = null;
+            Pair<VAccelerationStructure, VBuffer> entityBuild;
             if (entityData != null) {
                 entityBuild = entityBlasBuilder.buildBlas(entityData, cmd, fence);
+                context.sync.addCallback(fence, ()->{
+                    entityBuild.getLeft().free();
+                    entityBuild.getRight().free();
+                });
+            } else {
+                entityBuild = null;
             }
 
             {
@@ -134,9 +140,18 @@ public class AccelerationTLASManager {
                                 .dstAccessMask(VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT),
                         null, null);
 
-
-
-                buildDataManager.setGeometryUpdateMemory(fence, geometry, null);
+                VkAccelerationStructureInstanceKHR extra = null;
+                if (entityBuild != null) {
+                    extra = VkAccelerationStructureInstanceKHR.calloc(stack);
+                    extra.mask(~0)
+                            .instanceCustomIndex(0)
+                            .instanceShaderBindingTableRecordOffset(1)
+                            .accelerationStructureReference(entityBuild.getLeft().deviceAddress);
+                    extra.transform().matrix(new Matrix4x3f().getTransposed(stack.mallocFloat(12)));
+                    buildDataManager.descUpdateJobs.add(new TLASSectionManager.DescUpdateJob(0,0, List.of(entityBuild.getRight())));
+                    instances++;
+                }
+                buildDataManager.setGeometryUpdateMemory(fence, geometry, extra);
                 instances += buildDataManager.sectionCount();
 
                 vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -289,7 +304,7 @@ public class AccelerationTLASManager {
                     0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
             long ptr = data.map();
             if (addin != null) {
-                MemoryUtil.memCopy(addin.address(), ptr, size);
+                MemoryUtil.memCopy(addin.address(), ptr, VkAccelerationStructureInstanceKHR.SIZEOF);
                 ptr += VkAccelerationStructureInstanceKHR.SIZEOF;
             }
             MemoryUtil.memCopy(this.instances.address(0), ptr, size);
@@ -372,6 +387,13 @@ public class AccelerationTLASManager {
 
     private final class TLASSectionManager extends TLASGeometryManager {
         private final TlasPointerArena arena = new TlasPointerArena(30000);
+
+        public TLASSectionManager() {
+            //Allocate index 0 to entity blas
+            if (arena.allocate(1) != 0) {
+                throw new IllegalStateException();
+            }
+        }
 
         private VDescriptorSetLayout geometryBufferSetLayout;
         private VDescriptorPool geometryBufferDescPool;
