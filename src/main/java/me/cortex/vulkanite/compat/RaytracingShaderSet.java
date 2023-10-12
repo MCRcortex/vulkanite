@@ -74,6 +74,10 @@ public class RaytracingShaderSet {
         }
     }
 
+    public int getRayHitCount() {
+        return rayhits.length;
+    }
+
     public void delete() {
         for (var shader : allShader) {
             shader.free();
