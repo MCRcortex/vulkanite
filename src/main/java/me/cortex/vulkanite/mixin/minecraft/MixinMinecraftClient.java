@@ -1,10 +1,12 @@
 package me.cortex.vulkanite.mixin.minecraft;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import me.cortex.vulkanite.client.Vulkanite;
 import net.minecraft.client.MinecraftClient;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(MinecraftClient.class)

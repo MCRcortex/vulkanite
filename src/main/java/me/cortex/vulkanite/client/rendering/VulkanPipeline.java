@@ -224,7 +224,16 @@ public class VulkanPipeline {
 
     private VSemaphore previousSemaphore;
 
+
+    private final EntityCapture capture = new EntityCapture();
+    private void buildEntities() {
+        accelerationManager.setEntityData(capture.capture(0, MinecraftClient.getInstance().world));
+    }
+
     public void renderPostShadows(List<VGImage> outImgs, Camera camera, ShaderStorageBuffer[] ssbos, MixinCelestialUniforms celestialUniforms) {
+        buildEntities();
+
+
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
 
