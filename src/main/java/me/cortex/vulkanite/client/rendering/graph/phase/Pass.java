@@ -12,6 +12,17 @@ public abstract class Pass<T extends Pass<T>> {
         return (T) this;
     }
 
-    public abstract List<Resource<?>> reads();
-    public abstract List<Resource<?>> writes();
+    protected T reads(Resource<?> resource) {
+        resource.reads(this);
+        return (T) this;
+    }
+
+    protected T writes(Resource<?> resource) {
+        resource.writes(this);
+        return (T) this;
+    }
+
+    public String name() {
+        return this.name;
+    }
 }

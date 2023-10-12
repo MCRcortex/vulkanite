@@ -137,6 +137,7 @@ public class VulkanPipeline {
 
                 ctx.cmd.submit(0, VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(stack.pointers(cmd)));
 
+                //TODO: FIXME: Should be a fence sync
                 Vulkanite.INSTANCE.addSyncedCallback(cmd::enqueueFree);
             }
         }

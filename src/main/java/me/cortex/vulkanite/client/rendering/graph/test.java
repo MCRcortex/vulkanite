@@ -6,6 +6,8 @@ import me.cortex.vulkanite.client.rendering.graph.phase.TracePass;
 import me.cortex.vulkanite.client.rendering.graph.resource.BufferResource;
 import me.cortex.vulkanite.client.rendering.graph.resource.ImageResource;
 
+import java.util.ArrayList;
+
 public class test {
     public static void main(String[] args) {
         var ppmi = new BufferResource()
@@ -78,5 +80,8 @@ public class test {
                 .name("Post processing")
                 .reads(lighting)
                 .writes(output);
+
+
+        var graph = new RenderGraph(output);
     }
 }

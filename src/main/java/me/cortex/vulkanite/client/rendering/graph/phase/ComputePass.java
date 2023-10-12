@@ -4,10 +4,10 @@ import me.cortex.vulkanite.client.rendering.graph.resource.Resource;
 
 public class ComputePass extends Pass<ComputePass> {
     public ComputePass reads(Resource<?> resource) {
-        return this;
+        return super.reads(resource);
     }
 
     public ComputePass writes(Resource<?> resource) {
-        return this;
+        return super.writes(resource);
     }
 }
