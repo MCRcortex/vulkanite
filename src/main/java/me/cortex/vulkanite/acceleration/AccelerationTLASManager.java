@@ -413,8 +413,7 @@ public class AccelerationTLASManager {
 
         public void resizeBindlessSet(int newSize, VFence fence) {
             if (geometryBufferSetLayout == null) {
-                var layoutBuilder = new DescriptorSetLayoutBuilder(
-                        VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT);
+                var layoutBuilder = new DescriptorSetLayoutBuilder(VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT);
                 layoutBuilder.binding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 65536, VK_SHADER_STAGE_ALL);
                 layoutBuilder.setBindingFlags(0,
                         VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
