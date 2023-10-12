@@ -73,6 +73,8 @@ public class VulkanPipeline {
 
     private final int maxIrisRenderTargets = 16;
 
+    private final boolean supportsEntities;
+
     public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds, VGImage[] customTextures) {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
@@ -155,9 +157,18 @@ public class VulkanPipeline {
                 .maxAnisotropy(1.0f));
 
         if (passes == null) {
+            supportsEntities = false;
             return;
         }
 
+        boolean supportsEntitiesT = true;
+        for (var pass : passes) {
+            if (pass.getRayHitCount() == 1) {
+                supportsEntitiesT = false;
+                break;
+            }
+        }
+        supportsEntities = supportsEntitiesT;
         try {
             var commonSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
                 new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
@@ -227,7 +238,7 @@ public class VulkanPipeline {
 
     private final EntityCapture capture = new EntityCapture();
     private void buildEntities() {
-        accelerationManager.setEntityData(capture.capture(CapturedRenderingState.INSTANCE.getTickDelta(), MinecraftClient.getInstance().world));
+        accelerationManager.setEntityData(supportsEntities?capture.capture(CapturedRenderingState.INSTANCE.getTickDelta(), MinecraftClient.getInstance().world):null);
     }
 
     public void renderPostShadows(List<VGImage> outImgs, Camera camera, ShaderStorageBuffer[] ssbos, MixinCelestialUniforms celestialUniforms) {
