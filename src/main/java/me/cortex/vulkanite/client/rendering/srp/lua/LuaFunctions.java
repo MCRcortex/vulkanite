@@ -8,21 +8,21 @@ import me.cortex.vulkanite.client.rendering.srp.graph.RenderGraph;
 import me.cortex.vulkanite.client.rendering.srp.graph.phase.pipeline.TracePass;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.ExternalBoundLayout;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.Resource;
-import me.cortex.vulkanite.client.rendering.srp.test2;
+import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.pipeline.RaytracePipelineBuilder;
-import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
 import me.cortex.vulkanite.lib.shader.ShaderModule;
 import me.cortex.vulkanite.lib.shader.VShader;
 import me.cortex.vulkanite.lib.shader.reflection.ShaderReflection;
 import org.luaj.vm2.LuaTable;
 import org.luaj.vm2.LuaValue;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 //TODO: create a set of vk resources that need to get freed
 public class LuaFunctions {
+    private final Set<TrackedResourceObject> allocatedObjects = new HashSet<>();
+
     private final VContext vctx = Vulkanite.INSTANCE.getCtx();
     private final LuaContextHost ctx;
     public LuaFunctions(LuaContextHost ctx) {
@@ -34,6 +34,7 @@ public class LuaFunctions {
         if (arg.get("file") != LuaValue.NIL) {
             var source = ctx.getResource(arg.get("file").checkjstring());
             var shader = VShader.compileLoad(vctx, new String(source), stages);
+            this.allocatedObjects.add(shader);
             return new LuaJObj<>(shader);
         } else {
             throw new IllegalArgumentException("Unknown loading method for args: " + arg);
@@ -71,8 +72,8 @@ public class LuaFunctions {
             builder.addHit(chit, ahit, ihit);
         }
         var pipeline = builder.build(vctx, 1);
-
-        return new LuaJObj<>(new TracePipeline(pipeline.reflection.getSets().stream().map(LuaFunctions::buildLayout).toList()));
+        this.allocatedObjects.add(pipeline);
+        return new LuaJObj<>(new TracePipeline(pipeline, pipeline.reflection.getSets().stream().map(LuaFunctions::buildLayout).toList()));
     }
 
     private static Layout buildLayout(ShaderReflection.Set set) {
@@ -98,7 +99,6 @@ public class LuaFunctions {
                 }
             } else {
                 List<List<Resource<?>>> bindings = new ArrayList<>();
-
                 var setBindingsList = setBindingObject.checktable();
                 for (int index2 = 1; index2 < setBindingsList.keyCount() + 1; index2++) {
                     var bindingObject = setBindingsList.get(index2);
@@ -116,7 +116,6 @@ public class LuaFunctions {
                         throw new IllegalArgumentException("Unknown binding object " + bindingObject + " for set: " + index2);
                     }
                 }
-
                 pass.bindLayout(index - 1, bindings.toArray(List[]::new));
             }
         }
@@ -127,5 +126,11 @@ public class LuaFunctions {
         var output = ((LuaJObj<Resource<?>>)arg.get(1)).get();
         var graph = new RenderGraph(output);
         return LuaValue.NIL;
+    }
+
+    public void freeObjects() {
+        for (var obj : this.allocatedObjects) {
+            obj.free();
+        }
     }
 }

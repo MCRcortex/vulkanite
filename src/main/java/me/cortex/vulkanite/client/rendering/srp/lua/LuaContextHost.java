@@ -16,11 +16,12 @@ import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 public class LuaContextHost {
     private final LuaFunctions functions = new LuaFunctions(this);
     private final Function<String, byte[]> resourceLoader;
+    private final JavaLoader loader = new JavaLoader();
     public LuaContextHost(Function<String, byte[]> resourceLoader) {
         this.resourceLoader = resourceLoader;
     }
 
-    private static LuaFunction compileBytecode(byte[] source, String classname, LuaValue globals) {
+    private LuaFunction compileBytecode(byte[] source, String classname, LuaValue globals) {
         return compileBytecode(compile(source), classname, globals);
     }
 
@@ -33,9 +34,8 @@ public class LuaContextHost {
         }
     }
 
-    private static LuaFunction compileBytecode(Prototype prototype, String classname, LuaValue globals) {
-        JavaLoader loader = new JavaLoader();
-        return loader.load(prototype, classname, "script", globals);
+    private LuaFunction compileBytecode(Prototype prototype, String classname, LuaValue globals) {
+        return this.loader.load(prototype, classname, "script", globals);
     }
 
     public LuaValue loadRunScript(String name) {

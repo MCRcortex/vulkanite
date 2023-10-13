@@ -1,6 +1,5 @@
 package me.cortex.vulkanite.client.rendering.srp;
 
-import me.cortex.vulkanite.client.rendering.srp.api.PipelineFactory;
 import me.cortex.vulkanite.client.rendering.srp.api.layout.Layout;
 import me.cortex.vulkanite.client.rendering.srp.api.layout.LayoutBinding;
 import me.cortex.vulkanite.client.rendering.srp.graph.RenderGraph;
