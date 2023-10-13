@@ -1,4 +1,4 @@
-package me.cortex.vulkanite.client.rendering.graph;
+package me.cortex.vulkanite.client.rendering.srp.graph;
 
 //Graph cache for conditional graphs
 // caches N graphs with evaluated conditions

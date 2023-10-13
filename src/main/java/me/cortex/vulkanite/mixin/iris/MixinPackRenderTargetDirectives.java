@@ -13,7 +13,7 @@ public class MixinPackRenderTargetDirectives {
     @Redirect(method = "<clinit>", at = @At(value = "INVOKE", target = "Lcom/google/common/collect/ImmutableSet$Builder;build()Lcom/google/common/collect/ImmutableSet;"))
     private static ImmutableSet<Integer> redirectBuild(ImmutableSet.Builder<Integer> instance) {
         ImmutableSet.Builder<Integer> fake = new ImmutableSet.Builder<>();
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 16; i++) {
             fake.add(i);
         }
         return fake.build();
