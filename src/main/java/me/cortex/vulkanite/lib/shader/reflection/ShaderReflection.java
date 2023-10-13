@@ -74,6 +74,10 @@ public class ShaderReflection {
         return sets.get(set);
     }
 
+    public List<Set> getSets() {
+        return sets;
+    }
+
     public int getNSets() {
         return sets.size();
     }
@@ -113,6 +117,13 @@ public class ShaderReflection {
                         int binding = spvc_compiler_get_decoration(compiler, reflect.id(), SpvDecorationBinding);
                         int set = spvc_compiler_get_decoration(compiler, reflect.id(), SpvDecorationDescriptorSet);
                         var spvcType = spvc_compiler_get_type_handle(compiler, reflect.type_id());
+                        //System.err.println("\n");
+                        //System.err.println(spvc_type_get_image_access_qualifier(spvcType));
+                        //System.err.println(spvc_compiler_get_name(compiler, reflect.id()));
+                        //System.err.println(reflect.nameString());
+                        //System.err.println(spvc_compiler_has_decoration(compiler, reflect.id(), SpvDecorationRestrict));
+                        //System.err.println(spvc_compiler_has_decoration(compiler, reflect.id(), SpvDecorationNonReadable));
+                        //System.err.println(spvc_compiler_has_decoration(compiler, reflect.id(), SpvDecorationNonWritable));
                         int arrayNDims = spvc_type_get_num_array_dimensions(spvcType);
                         int arraySize = 0;
                         String name = spvc_compiler_get_name(compiler, reflect.id());

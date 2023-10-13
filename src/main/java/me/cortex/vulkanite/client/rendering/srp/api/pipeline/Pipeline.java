@@ -12,6 +12,6 @@ public abstract class Pipeline <T extends Pipeline<T>> {
     }
 
     public Layout getLayout(int index) {
-        return layouts.get(0);
+        return layouts.get(index);
     }
 }

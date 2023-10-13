@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.client.rendering.srp.graph.phase;
 
+import me.cortex.vulkanite.client.rendering.srp.api.execution.ExecutionContext;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.Resource;
 
 import java.util.Collection;
@@ -37,4 +38,8 @@ public abstract class Pass<T extends Pass<T>> {
 
     //Verifies that everything is bound correctly and validly bound
     public void verify(){};
+
+    public void execute(ExecutionContext ctx) {
+        throw new IllegalStateException();
+    }
 }

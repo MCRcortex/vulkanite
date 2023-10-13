@@ -128,6 +128,7 @@ public class AccelerationBlasBuilder {
 
         worker = new Thread(this::run);
         worker.setName("Acceleration blas worker");
+        worker.setDaemon(true);
         worker.start();
     }
 
