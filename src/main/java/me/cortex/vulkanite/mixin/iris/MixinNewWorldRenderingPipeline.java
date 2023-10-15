@@ -110,7 +110,12 @@ public class MixinNewWorldRenderingPipeline {
 
         //pipeline.renderPostShadows(outImgs, par2, buffers, celestialUniforms);
         pipeline.setup(par2, (MixinCelestialUniforms)(Object) new CelestialUniforms(this.sunPathRotation));
-        pipeline.execute();
+
+        List<VGImage> outImgs = new ArrayList<>();
+        for (int i = 0; i < 2; i++) {
+            outImgs.add(((IRenderTargetVkGetter)renderTargets.getOrCreate(i)).getMain());
+        }
+        pipeline.execute(outImgs);
     }
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))

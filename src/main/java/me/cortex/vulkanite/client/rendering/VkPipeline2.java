@@ -5,6 +5,7 @@ import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.client.rendering.srp.graph.GraphExecutor;
 import me.cortex.vulkanite.client.rendering.srp.lua.LuaContextHost;
 import me.cortex.vulkanite.client.rendering.srp.lua.LuaExternalObjects;
+import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
@@ -21,11 +22,14 @@ import net.coderbot.iris.uniforms.CelestialUniforms;
 import net.coderbot.iris.uniforms.SystemTimeUniforms;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
+import net.minecraft.util.Identifier;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import org.luaj.vm2.Lua;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 import static org.lwjgl.opengl.EXTSemaphore.GL_LAYOUT_GENERAL_EXT;
 import static org.lwjgl.opengl.GL11C.glFinish;
@@ -101,7 +105,7 @@ public class VkPipeline2 {
         return uboBuffer;
     }
 
-    public void execute() {
+    public void execute(List<VGImage> outTextures) {
         this.buildEntities();
         this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
@@ -123,6 +127,8 @@ public class VkPipeline2 {
             return;
         }
 
+
+        //Update the shared objects
         if (LuaExternalObjects.TERRAIN_GEOMETRY_LAYOUT.getConcrete() != accelerationManager.getGeometrySet()) {
             LuaExternalObjects.TERRAIN_GEOMETRY_LAYOUT.setConcrete(accelerationManager.getGeometrySet());
         }
@@ -130,6 +136,10 @@ public class VkPipeline2 {
         var ubo = this.createUBO();
         LuaExternalObjects.COMMON_UNIFORM_BUFFER.setConcrete(ubo);
         LuaExternalObjects.WORLD_ACCELERATION_STRUCTURE.setConcrete(tlas);
+        LuaExternalObjects.BLOCK_ATLAS.setConcrete(((IVGImage)MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"))).getVGImage());
+        for (int i = 0; i < outTextures.size(); i++) {
+            LuaExternalObjects.IRIS_IMAGES[i].setConcrete(outTextures.get(i));
+        }
 
         var cmd = this.singleUsePool.createCommandBuffer();
         cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);

@@ -72,16 +72,26 @@ public class LuaFunctions {
         return new LuaJObj<>(shader);
     }
 
+    private static ShaderModule getShaderModule(LuaValue value) {
+        if (value instanceof LuaJObj<?> obj) {
+            //Assume since its a raw object, just use the default named module
+            return ((LuaJObj<VShader>)obj).get().named();
+        }
+        var module = ((LuaJObj<VShader>)value.get("module")).get();
+        var name = value.get("entry").checkjstring();
+        return module.named(name);
+    }
+
     public LuaValue RaytracePipeline(LuaValue arg) {
         var builder = new RaytracePipelineBuilder();
 
 
-        var rgen = ((LuaJObj<VShader>)arg.get("raygen")).get().named();
+        var rgen = getShaderModule(arg.get("raygen"));
         builder.setRayGen(rgen);
 
         var missShaders = arg.get("raymiss").checktable();
         for (int index = 1; index < missShaders.keyCount()+1; index++) {
-            var rmiss = ((LuaJObj<VShader>)missShaders.get(index)).get().named();
+            var rmiss = getShaderModule(missShaders.get(index));
             builder.addMiss(rmiss);
         }
 
@@ -92,13 +102,13 @@ public class LuaFunctions {
             ShaderModule ahit = null;
             ShaderModule ihit = null;
             if (hitEntry.get("close") != LuaValue.NIL) {
-                chit = ((LuaJObj<VShader>)hitEntry.get("close")).get().named();
+                chit = getShaderModule(hitEntry.get("close"));
             }
             if (hitEntry.get("any") != LuaValue.NIL) {
-                ahit = ((LuaJObj<VShader>)hitEntry.get("any")).get().named();
+                ahit = getShaderModule(hitEntry.get("any"));
             }
             if (hitEntry.get("intersect") != LuaValue.NIL) {
-                ihit = ((LuaJObj<VShader>)hitEntry.get("intersect")).get().named();
+                ihit = getShaderModule(hitEntry.get("intersect"));
             }
             builder.addHit(chit, ahit, ihit);
         }
