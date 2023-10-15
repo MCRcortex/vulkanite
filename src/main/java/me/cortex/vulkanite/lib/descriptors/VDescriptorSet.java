@@ -4,7 +4,7 @@ import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 
 public class VDescriptorSet extends TrackedResourceObject {
     private final VTypedDescriptorPool pool;
-    public final long poolHandle;
+    final long poolHandle;
     public final long set;
 
     VDescriptorSet(VTypedDescriptorPool pool, long poolHandle, long set) {

@@ -39,19 +39,21 @@ public class VShader extends TrackedResourceObject {
         return new ShaderModule(this, name);
     }
 
-    public static VShader compileLoad(VContext ctx, String source, int stage) {
+    public static VShader compileLoad(VContext ctx, ByteBuffer spirv, int stage) {
         try (var stack = stackPush()) {
-            ByteBuffer code = ShaderCompiler.compileShader("shader", source, stage);
-
-            ShaderReflection reflection = new ShaderReflection(code);
+            ShaderReflection reflection = new ShaderReflection(spirv);
 
             VkShaderModuleCreateInfo createInfo = VkShaderModuleCreateInfo.calloc(stack)
                     .sType$Default()
-                    .pCode(code);
+                    .pCode(spirv);
             LongBuffer pShaderModule = stack.mallocLong(1);
             _CHECK_(vkCreateShaderModule(ctx.device, createInfo, null, pShaderModule));
             return new VShader(ctx, pShaderModule.get(0), stage, reflection);
         }
+    }
+
+    public static VShader compileLoad(VContext ctx, String source, int stage) {
+        return compileLoad(ctx,ShaderCompiler.compileShader("shader", source, stage), stage);
     }
 
     @Override

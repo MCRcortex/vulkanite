@@ -12,11 +12,12 @@ import java.util.List;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.util.spvc.Spv.*;
 import static org.lwjgl.util.spvc.Spvc.*;
+import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.*;
 
 public class ShaderReflection {
-    public record Binding(String name, int binding, int descriptorType, int arraySize, boolean runtimeSized) {}
+    public record Binding(String name, int binding, int descriptorType, int arraySize, boolean runtimeSized, int accessMsk) {}
     public record Set(ArrayList<Binding> bindings) {
         public Set(ArrayList<Binding> bindings) {
             // Sort by binding
@@ -95,7 +96,7 @@ public class ShaderReflection {
             long context = ptr.get(0);
 
             //Parse the spir-v
-            _CHECK_(spvc_context_parse_spirv(context, spirv.asIntBuffer(), spirv.remaining()>>2, ptr));
+            _CHECK_(spvc_context_parse_spirv(context, spirv.asIntBuffer(), spirv.remaining() >> 2, ptr));
             long ir = ptr.get(0);
 
             // Hand it off to a compiler instance and give it ownership of the IR.
@@ -111,26 +112,54 @@ public class ShaderReflection {
                 int vkDescType = type.toVkDescriptorType();
 
                 _CHECK_(spvc_resources_get_resource_list_for_type(resources, type.id, ptr, ptr2));
+                /*
+                for (int i = 0; i < 250; i++) {
+                    //System.err.println(i);
+                    System.err.println(spvc_compiler_get_name(compiler, i));
+                    System.err.println(spvc_compiler_get_member_decoration(compiler, i, 0, SpvDecorationNonWritable));
+                    System.err.println(spvc_compiler_get_member_decoration(compiler, i, 0, SpvDecorationNonReadable));
+                }*/
                 var reflectedResources = SpvcReflectedResource.create(ptr.get(0), (int) ptr2.get(0));
                 for (var reflect : reflectedResources) {
                     if (vkDescType != -1) {
                         int binding = spvc_compiler_get_decoration(compiler, reflect.id(), SpvDecorationBinding);
                         int set = spvc_compiler_get_decoration(compiler, reflect.id(), SpvDecorationDescriptorSet);
-                        var spvcType = spvc_compiler_get_type_handle(compiler, reflect.type_id());
-                        //System.err.println("\n");
-                        //System.err.println(spvc_type_get_image_access_qualifier(spvcType));
-                        //System.err.println(spvc_compiler_get_name(compiler, reflect.id()));
-                        //System.err.println(reflect.nameString());
-                        //System.err.println(spvc_compiler_has_decoration(compiler, reflect.id(), SpvDecorationRestrict));
-                        //System.err.println(spvc_compiler_has_decoration(compiler, reflect.id(), SpvDecorationNonReadable));
-                        //System.err.println(spvc_compiler_has_decoration(compiler, reflect.id(), SpvDecorationNonWritable));
-                        int arrayNDims = spvc_type_get_num_array_dimensions(spvcType);
-                        int arraySize = 0;
+                        var layoutType = spvc_compiler_get_type_handle(compiler, reflect.type_id());
                         String name = spvc_compiler_get_name(compiler, reflect.id());
+                        int baseLayoutTypeId = spvc_type_get_base_type_id(layoutType);
+
+                        int accessMsk = 0;
+                        accessMsk |= spvc_compiler_has_member_decoration(compiler, baseLayoutTypeId, 0, SpvDecorationNonWritable)?0:2;
+                        accessMsk |= spvc_compiler_has_member_decoration(compiler, baseLayoutTypeId, 0, SpvDecorationNonReadable)?0:1;
+
+                        if (accessMsk == 0) {
+                            accessMsk = switch (vkDescType) {
+                                case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR -> 1;
+                                case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER -> 1;
+                                case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER -> 1;
+                                case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER -> 3;
+                                case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE -> 3;
+                                default -> throw new IllegalStateException("Unknown description type: " + vkDescType);
+                            };
+                        }
+
+                        //System.err.println(spvc_compiler_get_name(compiler, baseLayoutTypeId) + ": " + name);
+                        //System.err.println(spvc_compiler_get_member_decoration(compiler, baseLayoutTypeId, 0, SpvDecorationNonWritable));
+                        /*
+                        int memberCount = spvc_type_get_num_member_types(layoutType);
+                        for (int i = 0; i < memberCount; i++) {
+                            var memberType = spvc_compiler_get_type_handle(compiler, spvc_type_get_member_type(layoutType, i));
+                            System.err.println(spvc_compiler_get_member_name(compiler, baseLayoutTypeId, i));
+                            System.err.println(spvc_type_get_num_array_dimensions(memberType));
+                            System.err.println(spvc_type_get_array_dimension(memberType, 0));
+                        }*/
+
+                        int arrayNDims = spvc_type_get_num_array_dimensions(layoutType);
+                        int arraySize = 0;
                         if (arrayNDims > 0) {
                             arraySize = 1;
                             for (int i = 0; i < arrayNDims; i++) {
-                                arraySize *= spvc_type_get_array_dimension(spvcType, i);
+                                arraySize *= spvc_type_get_array_dimension(layoutType, i);
                             }
                         }
                         boolean isRuntimeSized = false;
@@ -138,7 +167,9 @@ public class ShaderReflection {
                             isRuntimeSized = true;
                             arraySize = 1;
                         }
-                        var descriptor = new Binding(name, binding, vkDescType, arraySize, isRuntimeSized);
+                        //NOTE:Only some types can actually be written to! stuff like uniforms etc cant be written to thus, dont need to
+                        // make them writeable
+                        var descriptor = new Binding(name, binding, vkDescType, arraySize, isRuntimeSized, accessMsk);
                         while (sets.size() <= set) {
                             sets.add(new Set(new ArrayList<>()));
                         }
@@ -191,6 +222,9 @@ public class ShaderReflection {
                                 // We don't check for name conflicts, but still warn
                                 if (!b.name.isEmpty() && !binding.name.isEmpty() && b.name.compareTo(binding.name) != 0) {
                                     System.err.println("Warning: Conflicting names for binding " + binding.binding + " : " + b.name + " and " + binding.name);
+                                }
+                                if (b.accessMsk != binding.accessMsk) {
+                                    System.err.println("Warning: Conflicting access mask " + b.accessMsk + " and " + binding.accessMsk);
                                 }
                                 alreadyExists = true;
                             }

@@ -3,7 +3,9 @@ package me.cortex.vulkanite.mixin.iris;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap.Entry;
 import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.client.rendering.VkPipeline2;
 import me.cortex.vulkanite.client.rendering.VulkanPipeline;
+import me.cortex.vulkanite.client.rendering.srp.lua.LuaContextHost;
 import me.cortex.vulkanite.compat.*;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.memory.VGImage;
@@ -29,6 +31,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -43,7 +48,7 @@ public class MixinNewWorldRenderingPipeline {
     @Shadow @Final private float sunPathRotation;
     @Unique private RaytracingShaderSet[] rtShaderPasses = null;
     @Unique private VContext ctx;
-    @Unique private VulkanPipeline pipeline;
+    @Unique private VkPipeline2 pipeline;
 
     @Unique
     private VGImage[] getCustomTextures() {
@@ -64,6 +69,16 @@ public class MixinNewWorldRenderingPipeline {
     @Inject(method = "<init>", at = @At("TAIL"))
     private void injectRTShader(ProgramSet set, CallbackInfo ci) {
         ctx = Vulkanite.INSTANCE.getCtx();
+        pipeline = new VkPipeline2(ctx, new LuaContextHost(path -> {
+            try {
+                return Files.readAllBytes(new File("shaderpacks/testpack/shaders/" + path).toPath());
+            } catch (
+                    IOException e) {
+                throw new RuntimeException(e);
+            }
+        }), Vulkanite.INSTANCE.getAccelerationManager());
+
+        /*
         var passes = ((IGetRaytracingSource)set).getRaytracingSource();
         if (passes != null) {
             rtShaderPasses = new RaytracingShaderSet[passes.length];
@@ -73,10 +88,12 @@ public class MixinNewWorldRenderingPipeline {
         }
         // Still create this, later down the line we might add Vulkan compute pipelines or mesh shading, etc.
         pipeline = new VulkanPipeline(ctx, Vulkanite.INSTANCE.getAccelerationManager(), rtShaderPasses, set.getPackDirectives().getBufferObjects().keySet().toArray(new int[0]), getCustomTextures());
+        */
     }
 
     @Inject(method = "renderShadows", at = @At("TAIL"))
     private void renderShadows(LevelRendererAccessor par1, Camera par2, CallbackInfo ci) {
+        /*
         ShaderStorageBuffer[] buffers = new ShaderStorageBuffer[0];
 
         if(shaderStorageBufferHolder != null) {
@@ -87,10 +104,13 @@ public class MixinNewWorldRenderingPipeline {
         for (int i = 0; i < renderTargets.getRenderTargetCount(); i++) {
             outImgs.add(((IRenderTargetVkGetter)renderTargets.getOrCreate(i)).getMain());
         }
+        */
 
-        MixinCelestialUniforms celestialUniforms = (MixinCelestialUniforms)(Object) new CelestialUniforms(this.sunPathRotation);
+        //MixinCelestialUniforms celestialUniforms = (MixinCelestialUniforms)(Object) new CelestialUniforms(this.sunPathRotation);
 
-        pipeline.renderPostShadows(outImgs, par2, buffers, celestialUniforms);
+        //pipeline.renderPostShadows(outImgs, par2, buffers, celestialUniforms);
+        pipeline.setup(par2, (MixinCelestialUniforms)(Object) new CelestialUniforms(this.sunPathRotation));
+        pipeline.execute();
     }
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))
@@ -101,8 +121,9 @@ public class MixinNewWorldRenderingPipeline {
                 pass.delete();
             }
         }
-        pipeline.destory();
         rtShaderPasses = null;
+
+        pipeline.destory();
         pipeline = null;
     }
 }

@@ -51,4 +51,11 @@ public abstract class Resource <T extends Resource<T>> {
         return this.writers.get(this.writers.size()-1);
     }
 
+    public T resetDependencies() {
+        this.writers.clear();
+        this.readers.clear();
+        this.dependencies.clear();
+        return (T) this;
+    }
+
 }

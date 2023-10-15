@@ -16,6 +16,12 @@ public abstract class TrackedResourceObject {
 
     public abstract void free();
 
+    public void assertNotFreed() {
+        if (isFreed()) {
+            throw new IllegalStateException("Object " + this + " should not be free, but is");
+        }
+    }
+
     public boolean isFreed() {
         return ref.freedRef[0];
     }

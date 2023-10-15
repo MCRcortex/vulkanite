@@ -10,9 +10,8 @@ import java.nio.file.Files;
 public class test3 {
     public static byte[] load(String path) {
         try {
-            return Files.readAllBytes(new File(path).toPath());
-        } catch (
-                IOException e) {
+            return Files.readAllBytes(new File("run/shaderpacks/testpack/shaders/"+path).toPath());
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -21,7 +20,8 @@ public class test3 {
         Vulkanite.INSTANCE.getCtx();
 
         var host = new LuaContextHost(test3::load);
-        host.loadRunScript("test.lua");
+        host.loadScript("srp.lua");
+        host.run();
         System.err.println("Done");
         Thread.sleep(1000);
         Vulkanite.INSTANCE.destroy();

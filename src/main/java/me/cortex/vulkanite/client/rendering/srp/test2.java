@@ -38,6 +38,6 @@ public class test2 {
         for (var binding : set.bindings()) {
             bindingList.add(new LayoutBinding(binding.name(), binding.binding(), 3, binding.descriptorType(), binding.runtimeSized()?-1:binding.arraySize()));
         }
-        return new Layout(false, bindingList.toArray(LayoutBinding[]::new));
+        return new Layout(bindingList.toArray(LayoutBinding[]::new));
     }
 }

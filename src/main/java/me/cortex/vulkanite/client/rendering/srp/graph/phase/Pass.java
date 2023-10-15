@@ -1,5 +1,7 @@
 package me.cortex.vulkanite.client.rendering.srp.graph.phase;
 
+import me.cortex.vulkanite.client.rendering.srp.api.VirtualResourceMapper;
+import me.cortex.vulkanite.client.rendering.srp.api.execution.DescriptorSetBuilder;
 import me.cortex.vulkanite.client.rendering.srp.api.execution.ExecutionContext;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.Resource;
 
@@ -37,9 +39,10 @@ public abstract class Pass<T extends Pass<T>> {
     }
 
     //Verifies that everything is bound correctly and validly bound
-    public void verify(){};
+    // also enable setup, such as creating layouts
+    public void verifyAndPrep(VirtualResourceMapper resourceMapper){}
 
     public void execute(ExecutionContext ctx) {
-        throw new IllegalStateException();
+        throw new IllegalStateException("Execution not implemented");
     }
 }

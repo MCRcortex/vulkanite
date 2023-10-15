@@ -2,17 +2,21 @@ package me.cortex.vulkanite.client.rendering.srp.graph;
 
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
+import me.cortex.vulkanite.client.rendering.srp.api.VirtualResourceMapper;
+import me.cortex.vulkanite.client.rendering.srp.api.execution.ExecutionContext;
 import me.cortex.vulkanite.client.rendering.srp.graph.phase.Pass;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.ExternalResource;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.Resource;
 
 import java.util.*;
 
-public class RenderGraph {
+public class RenderGraph implements VirtualResourceMapper {
     private final Reference2ObjectMap<Pass<?>, Set<Pass<?>>> dependents = new Reference2ObjectOpenHashMap<>();
     private final List<Resource<?>> outputs;
 
     private final Set<Resource<?>> graphResources = new LinkedHashSet<>();
+
+    final List<Pass<?>> ordering = new ArrayList<>();
 
     public RenderGraph(Resource<?>... outputs) {
         this(List.of(outputs));
@@ -58,7 +62,7 @@ public class RenderGraph {
                 if (lastRef == null) {
                     //Resource is only ever read from
                     // it MUST be an external reference
-                    if (!(resource instanceof ExternalResource<?>)) {
+                    if (!(resource instanceof ExternalResource<?, ?>)) {
                         throw new IllegalStateException("Tried reading from a resource thats never written to");
                     }
                     continue;
@@ -76,9 +80,11 @@ public class RenderGraph {
 
 
         for (var pass : ordering) {
-            pass.verify();
-            System.err.println(pass.name());
+            pass.verifyAndPrep(this);
         }
+
+        this.ordering.clear();
+        this.ordering.addAll(ordering);
     }
     private void topologicalSort0(Set<Pass<?>> seen, Pass<?> current, int depth, List<Pass<?>> sort) {
         //TODO: want to actually find the range in which the phases can run

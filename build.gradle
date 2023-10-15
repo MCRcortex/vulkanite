@@ -47,8 +47,8 @@ dependencies {
 
     modRuntimeOnly 'net.java.dev.jna:jna:5.9.0'
 
-    implementation("com.github.FiguraMC.LuaJ:luaj-core:3.0.6-figura")
-    implementation("com.github.FiguraMC.LuaJ:luaj-jse:3.0.6-figura")
+    include(implementation("com.github.FiguraMC.LuaJ:luaj-core:3.0.6-figura"))
+    include(implementation("com.github.FiguraMC.LuaJ:luaj-jse:3.0.6-figura"))
 }
 
 processResources {
@@ -186,4 +186,7 @@ dependencies {
     include(implementation("org.lwjgl:lwjgl-shaderc:$lwjglVersion"))
     include(runtimeOnly("org.lwjgl:lwjgl-shaderc:$lwjglVersion:$winNatives"))
     include(runtimeOnly("org.lwjgl:lwjgl-shaderc:$lwjglVersion:$linuxNatives"))
+
+    include(runtimeOnly("org.lwjgl:lwjgl-spvc:$lwjglVersion:$winNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-spvc:$lwjglVersion:$linuxNatives"))
 }

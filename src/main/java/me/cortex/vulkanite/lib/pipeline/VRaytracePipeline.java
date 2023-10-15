@@ -47,6 +47,7 @@ public class VRaytracePipeline extends TrackedResourceObject {
     }
 
     public void bind(VCmdBuff cmd) {
+        assertNotFreed();
         vkCmdBindPipeline(cmd.buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
     }
 
@@ -54,13 +55,14 @@ public class VRaytracePipeline extends TrackedResourceObject {
         vkCmdTraceRaysKHR(cmd.buffer, gen, miss, hit, callable, width, height, depth);
     }
 
-    public void bindDSet(VCmdBuff cmd, long... descs) {
+    public void bindDSets(VCmdBuff cmd, long... descs) {
         vkCmdBindDescriptorSets(cmd.buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, layout, 0, descs, null);
     }
 
     public void free() {
         free0();
         vkDestroyPipeline(context.device, pipeline, null);
+        vkDestroyPipelineLayout(context.device, layout, null);
         shader_binding_table.free();
         gen.free();
         miss.free();

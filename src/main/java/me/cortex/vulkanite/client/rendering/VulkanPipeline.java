@@ -24,7 +24,6 @@ import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
 import net.coderbot.iris.texture.pbr.PBRTextureHolder;
 import net.coderbot.iris.texture.pbr.PBRTextureManager;
 import net.coderbot.iris.uniforms.CapturedRenderingState;
-import net.coderbot.iris.uniforms.CommonUniforms;
 import net.coderbot.iris.uniforms.SystemTimeUniforms;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
@@ -172,27 +171,27 @@ public class VulkanPipeline {
         supportsEntities = supportsEntitiesT;
         try {
             var commonSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
-                new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
-                new ShaderReflection.Binding("", 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, false),
-                new ShaderReflection.Binding("", 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
-                new ShaderReflection.Binding("", 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
-                new ShaderReflection.Binding("", 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
-                new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, false),
+                new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false, 1),
+                new ShaderReflection.Binding("", 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, false, 1),
+                new ShaderReflection.Binding("", 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false, 1),
+                new ShaderReflection.Binding("", 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false, 1),
+                new ShaderReflection.Binding("", 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false, 1),
+                new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, false, 1),
             });
 
             var geomSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
-               new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, true)
+               new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, true, 1)
             });
 
             ArrayList<ShaderReflection.Binding> customTexBindings = new ArrayList<>();
             for (int i = 0; i < customTextureViews.length; i++) {
-                customTexBindings.add(new ShaderReflection.Binding("", i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false));
+                customTexBindings.add(new ShaderReflection.Binding("", i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false, 2));
             }
             var customTexSetExpected = new ShaderReflection.Set(customTexBindings);
 
             ArrayList<ShaderReflection.Binding> ssboBindings = new ArrayList<>();
             for (int id : ssboIds) {
-                ssboBindings.add(new ShaderReflection.Binding("", id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, true));
+                ssboBindings.add(new ShaderReflection.Binding("", id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, true, 3));
             }
             var ssboSetExpected = new ShaderReflection.Set(ssboBindings);
 
@@ -394,7 +393,7 @@ public class VulkanPipeline {
                     sets[record.ssboSet] = ssboSet.set;
                     cmd.addTransientResource(ssboSet);
                 }
-                pipeline.bindDSet(cmd, sets);
+                pipeline.bindDSets(cmd, sets);
                 pipeline.trace(cmd, outImgs.get(0).width, outImgs.get(0).height, 1);
 
                 // Barrier on the output images

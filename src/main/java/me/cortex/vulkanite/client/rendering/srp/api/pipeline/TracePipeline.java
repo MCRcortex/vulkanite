@@ -7,12 +7,12 @@ import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TracePipeline extends Pipeline<TracePipeline> {
+public class TracePipeline extends Pipeline<TracePipeline, VRaytracePipeline> {
     public TracePipeline(VRaytracePipeline pipeline, Layout... layouts) {
         this(pipeline, List.of(layouts));
     }
 
     public TracePipeline(VRaytracePipeline pipeline, List<Layout> layouts) {
-        super(layouts);
+        super(pipeline, layouts);
     }
 }
