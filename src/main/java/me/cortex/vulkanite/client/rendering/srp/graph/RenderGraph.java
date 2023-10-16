@@ -31,7 +31,15 @@ public class RenderGraph implements VirtualResourceMapper {
     //Adds a resources dependency chains to the graph
     private void addResourceToGraph(Resource<?> resource) {
         if (this.graphResources.add(resource)) {
-            resource.getDependencyMap().forEach((pass,depends)-> this.dependents.computeIfAbsent(pass, a->new LinkedHashSet<>()).addAll(depends));
+            resource.getDependencyMap().forEach((pass,depends)-> {
+                if (pass == null) {
+                    throw new IllegalStateException("Pass == null");
+                }
+                if (depends.contains(null)) {
+                    throw new IllegalStateException("Dependency contains null");
+                }
+                this.dependents.computeIfAbsent(pass, a->new LinkedHashSet<>()).addAll(depends);
+            });
         }
     }
 
@@ -52,6 +60,9 @@ public class RenderGraph implements VirtualResourceMapper {
         Set<Pass<?>> seen = new HashSet<>();
         List<Pass<?>> ordering = new ArrayList<>();
         for (var source : sources) {
+            if (source.getLastWrite() == null) {
+                throw new IllegalStateException("Output source has never been written to");
+            }
             this.topologicalSort0(seen, source.getLastWrite(), 0, ordering);
         }
 

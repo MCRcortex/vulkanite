@@ -1,8 +1,6 @@
 package me.cortex.vulkanite.client;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
-import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
-import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorPool;

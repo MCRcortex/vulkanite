@@ -6,7 +6,6 @@ import me.cortex.vulkanite.client.rendering.srp.graph.GraphExecutor;
 import me.cortex.vulkanite.client.rendering.srp.lua.LuaContextHost;
 import me.cortex.vulkanite.client.rendering.srp.lua.LuaExternalObjects;
 import me.cortex.vulkanite.compat.IVGImage;
-import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;

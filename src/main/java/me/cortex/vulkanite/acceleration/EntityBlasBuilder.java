@@ -1,10 +1,19 @@
 package me.cortex.vulkanite.acceleration;
 
+import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.client.rendering.srp.lua.LuaExternalObjects;
 import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
+import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
+import me.cortex.vulkanite.lib.descriptors.DescriptorUpdateBuilder;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
+import me.cortex.vulkanite.lib.descriptors.VTypedDescriptorPool;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
+import me.cortex.vulkanite.lib.memory.VImage;
+import me.cortex.vulkanite.lib.other.VImageView;
+import me.cortex.vulkanite.lib.other.VSampler;
 import me.cortex.vulkanite.lib.other.VUtil;
 import me.cortex.vulkanite.lib.other.sync.VFence;
 import net.coderbot.iris.vertices.IrisVertexFormats;
@@ -27,17 +36,45 @@ import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
 import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK12.VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
 
 public class EntityBlasBuilder {
+    private static VDescriptorSetLayout ENTITY_LAYOUT;
+    private static VTypedDescriptorPool ENTITY_POOL;
+    private static VSampler SAMPLER;
     private final VContext ctx;
     public EntityBlasBuilder(VContext context) {
         this.ctx = context;
+        if (ENTITY_LAYOUT == null) {
+            ENTITY_LAYOUT = new DescriptorSetLayoutBuilder()
+                    .binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 32, VK_SHADER_STAGE_ALL)
+                    .binding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 32, VK_SHADER_STAGE_ALL)
+                    .setBindingFlags(0, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT)
+                    .setBindingFlags(1, VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT)
+                    .build(context);
+            ENTITY_POOL = new VTypedDescriptorPool(ctx, ENTITY_LAYOUT, 0);
+            SAMPLER = new VSampler(context, a->a.magFilter(VK_FILTER_NEAREST)
+                    .minFilter(VK_FILTER_NEAREST)
+                    .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
+                    .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                    .addressModeV(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                    .addressModeW(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
+                    .compareOp(VK_COMPARE_OP_NEVER)
+                    .maxLod(1)
+                    .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
+                    .maxAnisotropy(1.0f));
+        }
     }
 
     private record BuildInfo(VertexFormat format, int quadCount, long address) {}
     Pair<VAccelerationStructure, VBuffer> buildBlas(List<Pair<RenderLayer, BufferBuilder.BuiltBuffer>> renders, VCmdBuff cmd, VFence fence) {
+        var descriptorSet = ENTITY_POOL.allocateSet();
+        ctx.sync.addCallback(fence, ()->Vulkanite.INSTANCE.addSyncedCallback(descriptorSet::free));
+        LuaExternalObjects.ENTITY_DATA_LAYOUT.setConcrete(descriptorSet.set);
+
         long combined_size = 0;
         TextureManager textureManager = MinecraftClient.getInstance().getTextureManager();
+        List<VImage> images = new ArrayList<>(renders.size());
         for (var type : renders) {
             if (((RenderLayer.MultiPhase)type.getLeft()).phases.texture instanceof RenderPhase.Textures) {
                 throw new IllegalStateException("Multi texture not supported");
@@ -48,6 +85,7 @@ public class EntityBlasBuilder {
             if (vkImage == null) {
                 throw new IllegalStateException("Vulkan texture not created for render layer " + type.getLeft());
             }
+            images.add(vkImage);
             if (!type.getRight().getParameters().format().equals(IrisVertexFormats.ENTITY)) {
                 throw new IllegalStateException("Unknown vertex format used");
             }
@@ -60,14 +98,33 @@ public class EntityBlasBuilder {
         long ptr = geometryBuffer.map();
         long offset = 0;
         List<BuildInfo> infos = new ArrayList<>();
+        var dub = new DescriptorUpdateBuilder(ctx, 100)
+                .set(descriptorSet.set);
+
+        for (int i = 0; i < images.size(); i++) {
+            //TODO: FIXME: OPTIMIZE
+            var view = new VImageView(ctx, images.get(i));
+            dub.imageSampler(0, i, view, SAMPLER);
+            //Pain, this is to ensure the gpu is done with it cause we dont have a reference to a fence we can use (that is synced with the primary trace)
+            ctx.sync.addCallback(fence, ()->Vulkanite.INSTANCE.addSyncedCallback(()->Vulkanite.INSTANCE.addSyncedCallback(view::free)));
+        }
+
+
+
+        int i = 0;
         for (var pair : renders) {
             offset = VUtil.alignUp(offset, 128);
+            dub.buffer(1, i++, geometryBuffer, offset, pair.getRight().getVertexBuffer().remaining() + 32);
+
             MemoryUtil.memCopy(MemoryUtil.memAddress(pair.getRight().getVertexBuffer()), ptr + offset, pair.getRight().getVertexBuffer().remaining());
             infos.add(new BuildInfo(pair.getRight().getParameters().format(), pair.getRight().getParameters().indexCount()/6, geometryBuffer.deviceAddress() + offset));
 
-
+            offset += 64;
             offset += pair.getRight().getVertexBuffer().remaining();
         }
+
+        dub.apply();
+
         geometryBuffer.unmap();
 
         VAccelerationStructure blas = null;

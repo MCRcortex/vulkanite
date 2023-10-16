@@ -4,7 +4,6 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap.Entry;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.client.rendering.VkPipeline2;
-import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.client.rendering.srp.lua.LuaContextHost;
 import me.cortex.vulkanite.compat.*;
 import me.cortex.vulkanite.lib.base.VContext;
@@ -46,7 +45,6 @@ public class MixinNewWorldRenderingPipeline {
     @Shadow private ShaderStorageBufferHolder shaderStorageBufferHolder;
 
     @Shadow @Final private float sunPathRotation;
-    @Unique private RaytracingShaderSet[] rtShaderPasses = null;
     @Unique private VContext ctx;
     @Unique private VkPipeline2 pipeline;
 
@@ -121,13 +119,6 @@ public class MixinNewWorldRenderingPipeline {
     @Inject(method = "destroyShaders", at = @At("TAIL"))
     private void destory(CallbackInfo ci) {
         ctx.cmd.waitQueueIdle(0);
-        if (rtShaderPasses != null) {
-            for (var pass : rtShaderPasses) {
-                pass.delete();
-            }
-        }
-        rtShaderPasses = null;
-
         pipeline.destory();
         pipeline = null;
     }

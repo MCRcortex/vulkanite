@@ -24,15 +24,13 @@ public class VRaytracePipeline extends TrackedResourceObject {
     private final VkStridedDeviceAddressRegionKHR hit;
     private final VkStridedDeviceAddressRegionKHR callable;
     private final Set<ShaderModule> shadersUsed;
-    public final ShaderReflection reflection;
 
     VRaytracePipeline(VContext context, long pipeline, long layout, VBuffer sbtMap,
                       VkStridedDeviceAddressRegionKHR raygen,
                       VkStridedDeviceAddressRegionKHR miss,
                       VkStridedDeviceAddressRegionKHR hit,
                       VkStridedDeviceAddressRegionKHR callable,
-                      Set<ShaderModule> shadersUsed,
-                      ShaderReflection reflection) {
+                      Set<ShaderModule> shadersUsed) {
 
         this.context = context;
         this.pipeline = pipeline;
@@ -43,7 +41,6 @@ public class VRaytracePipeline extends TrackedResourceObject {
         this.hit = hit;
         this.callable = callable;
         this.shadersUsed = shadersUsed;
-        this.reflection = reflection;
     }
 
     public void bind(VCmdBuff cmd) {
@@ -68,6 +65,5 @@ public class VRaytracePipeline extends TrackedResourceObject {
         miss.free();
         hit.free();
         callable.free();
-        reflection.freeLayouts();
     }
 }

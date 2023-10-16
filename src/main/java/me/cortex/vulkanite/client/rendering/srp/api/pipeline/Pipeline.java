@@ -1,7 +1,6 @@
 package me.cortex.vulkanite.client.rendering.srp.api.pipeline;
 
 import me.cortex.vulkanite.client.rendering.srp.api.layout.Layout;
-
 import java.util.List;
 
 public abstract class Pipeline <T extends Pipeline<T, J>, J> {
@@ -14,7 +13,7 @@ public abstract class Pipeline <T extends Pipeline<T, J>, J> {
         this.layouts = layouts;
     }
 
-    public Layout getLayout(int index) {
+    public Layout getLayoutSet(int index) {
         return this.layouts.get(index);
     }
 

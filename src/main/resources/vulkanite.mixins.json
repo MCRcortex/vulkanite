@@ -12,7 +12,6 @@
     "iris.MixinNewWorldRenderingPipeline",
     "iris.MixinPackRenderTargetDirectives",
     "iris.MixinPBRAtlasTexture",
-    "iris.MixinProgramSet",
     "iris.MixinRenderTarget",
     "iris.MixinShaderPackSourceNames",
     "iris.MixinStandardMacros",

@@ -3,6 +3,9 @@ package me.cortex.vulkanite.client.rendering.srp.api.layout;
 import java.util.Objects;
 
 public class LayoutBinding {
+    public static final int ACCESS_READ = 1;
+    public static final int ACCESS_WRITE = 2;
+
     public final String name;
     public final int index;
     public final int type;

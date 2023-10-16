@@ -9,7 +9,11 @@ public class Layout {
 
     private final int hash;
     public Layout(LayoutBinding... bindings) {
-        this.bindings.addAll(List.of(bindings));
+        this(List.of(bindings));
+    }
+
+    public Layout(List<LayoutBinding> bindings) {
+        this.bindings.addAll(bindings);
         this.hash = Objects.hash(this.bindings);
     }
 

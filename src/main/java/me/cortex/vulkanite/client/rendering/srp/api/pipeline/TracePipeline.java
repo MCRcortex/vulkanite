@@ -1,7 +1,6 @@
 package me.cortex.vulkanite.client.rendering.srp.api.pipeline;
 
 import me.cortex.vulkanite.client.rendering.srp.api.layout.Layout;
-import me.cortex.vulkanite.lib.pipeline.VComputePipeline;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
 
 import java.util.ArrayList;

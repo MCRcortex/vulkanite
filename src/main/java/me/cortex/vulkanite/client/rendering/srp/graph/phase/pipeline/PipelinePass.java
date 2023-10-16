@@ -2,7 +2,6 @@ package me.cortex.vulkanite.client.rendering.srp.graph.phase.pipeline;
 
 import java.util.*;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 import me.cortex.vulkanite.client.rendering.srp.api.VirtualResourceMapper;
 import me.cortex.vulkanite.client.rendering.srp.api.execution.DescriptorSetBuilder;
@@ -60,7 +59,7 @@ public abstract class PipelinePass<T extends PipelinePass<T, J, P>, J extends Pi
         return (T)this;
     }
 
-    public T bindLayout(Layout layout, ExternalBoundLayout binding) {
+    public T bindLayout(Layout layout, ExternalBoundDescriptorSet binding) {
         if (this.layoutBindings.containsKey(layout)) {
             throw new IllegalStateException("Already bound layout");
         }
@@ -69,15 +68,15 @@ public abstract class PipelinePass<T extends PipelinePass<T, J, P>, J extends Pi
     }
 
     public T bindLayout(int index, Resource<?>... bindings) {
-        return this.bindLayout(this.pipeline.getLayout(index), bindings);
+        return this.bindLayout(this.pipeline.getLayoutSet(index), bindings);
     }
 
-    public T bindLayout(int index, ExternalBoundLayout binding) {
-        return this.bindLayout(this.pipeline.getLayout(index), binding);
+    public T bindLayout(int index, ExternalBoundDescriptorSet binding) {
+        return this.bindLayout(this.pipeline.getLayoutSet(index), binding);
     }
 
     public T bindLayout(int index, List<Resource<?>>... bindings) {
-        return this.bindLayout(this.pipeline.getLayout(index), bindings);
+        return this.bindLayout(this.pipeline.getLayoutSet(index), bindings);
     }
 
     public T bindLayout(Resource<?>... bindings) {
@@ -99,7 +98,7 @@ public abstract class PipelinePass<T extends PipelinePass<T, J, P>, J extends Pi
 
         for (var layout : this.pipeline.getLayouts()) {
             var bindingObject = this.layoutBindings.get(layout);
-            if (bindingObject instanceof ExternalBoundLayout boundLayout) {
+            if (bindingObject instanceof ExternalBoundDescriptorSet boundLayout) {
                 if (!boundLayout.layout().equals(layout)) {
                     throw new IllegalStateException("External bound layout does not match expected layout");
                 }

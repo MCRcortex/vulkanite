@@ -33,8 +33,9 @@ public class DescriptorSetLayoutBuilder {
         return binding(bindings.capacity(), type, stages);
     }
 
-    public void setBindingFlags(int binding, int flag) {
+    public DescriptorSetLayoutBuilder setBindingFlags(int binding, int flag) {
         bindingFlagsMap.put(binding, flag);
+        return this;
     }
 
     int flags;

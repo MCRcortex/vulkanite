@@ -35,6 +35,8 @@ import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.*;
 
 public class AccelerationTLASManager {
+    private static final int TERRAIN_GEOMETRY_BINDING_INDEX = 2;
+
     private final EntityBlasBuilder entityBlasBuilder;
     private final TLASSectionManager buildDataManager = new TLASSectionManager();
     private final VContext context;
@@ -148,7 +150,7 @@ public class AccelerationTLASManager {
                             .instanceShaderBindingTableRecordOffset(1)
                             .accelerationStructureReference(entityBuild.getLeft().deviceAddress);
                     extra.transform().matrix(new Matrix4x3f().getTransposed(stack.mallocFloat(12)));
-                    buildDataManager.descUpdateJobs.add(new TLASSectionManager.DescUpdateJob(0,0, List.of(entityBuild.getRight())));
+                    buildDataManager.descUpdateJobs.add(new TLASSectionManager.DescUpdateJob(TERRAIN_GEOMETRY_BINDING_INDEX, 0, List.of(entityBuild.getRight())));
                     instances++;
                 }
                 buildDataManager.setGeometryUpdateMemory(fence, geometry, extra);
@@ -414,8 +416,8 @@ public class AccelerationTLASManager {
         public void resizeBindlessSet(int newSize, VFence fence) {
             if (geometryBufferSetLayout == null) {
                 var layoutBuilder = new DescriptorSetLayoutBuilder(VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT);
-                layoutBuilder.binding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 65536, VK_SHADER_STAGE_ALL);
-                layoutBuilder.setBindingFlags(0,
+                layoutBuilder.binding(TERRAIN_GEOMETRY_BINDING_INDEX, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 65536, VK_SHADER_STAGE_ALL);
+                layoutBuilder.setBindingFlags(TERRAIN_GEOMETRY_BINDING_INDEX,
                         VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT
                                 | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT
                                 | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT);
@@ -437,6 +439,8 @@ public class AccelerationTLASManager {
                         var setCopy = VkCopyDescriptorSet.calloc(1, stack);
                         setCopy.get(0)
                                 .sType$Default()
+                                .srcBinding(TERRAIN_GEOMETRY_BINDING_INDEX)
+                                .dstBinding(TERRAIN_GEOMETRY_BINDING_INDEX)
                                 .srcSet(geometryBufferDescSet)
                                 .dstSet(newGeometryBufferDescSet)
                                 .descriptorCount(setCapacity);
@@ -520,7 +524,7 @@ public class AccelerationTLASManager {
             holder.geometryBuffers = data.geometryBuffers();
             holder.geometryIndex = arena.allocate(holder.geometryBuffers.size());
 
-            descUpdateJobs.add(new DescUpdateJob(0, holder.geometryIndex, holder.geometryBuffers));
+            descUpdateJobs.add(new DescUpdateJob(TERRAIN_GEOMETRY_BINDING_INDEX, holder.geometryIndex, holder.geometryBuffers));
 
             try (var stack = stackPush()) {
                 var asi = VkAccelerationStructureInstanceKHR.calloc(stack)

@@ -58,12 +58,17 @@ public class DescriptorUpdateBuilder {
     public DescriptorUpdateBuilder buffer(int binding, VBuffer buffer) {
         return buffer(binding, buffer, 0, VK_WHOLE_SIZE);
     }
+
     public DescriptorUpdateBuilder buffer(int binding, VBuffer buffer, long offset, long range) {
+        return buffer(binding, 0, buffer, offset, range);
+    }
+    public DescriptorUpdateBuilder buffer(int binding, int dstArrayElement, VBuffer buffer, long offset, long range) {
         if (refSet != null && refSet.getBindingAt(binding) == null) {
             return this;
         }
         updates.get()
                 .sType$Default()
+                .dstArrayElement(dstArrayElement)
                 .dstBinding(binding)
                 .dstSet(set)
                 .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
@@ -155,6 +160,7 @@ public class DescriptorUpdateBuilder {
         }
         updates.get()
                 .sType$Default()
+                .dstArrayElement(dstArrayElement)
                 .dstBinding(binding)
                 .dstSet(set)
                 .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
@@ -183,10 +189,14 @@ public class DescriptorUpdateBuilder {
     }
 
     public DescriptorUpdateBuilder imageSampler(int binding, VImageView view, VSampler sampler) {
-        return imageSampler(binding, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, view, sampler);
+        return imageSampler(binding, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, view, sampler);
     }
 
-    public DescriptorUpdateBuilder imageSampler(int binding, int layout, VImageView view, VSampler sampler) {
+    public DescriptorUpdateBuilder imageSampler(int binding, int dstArrayElement, VImageView view, VSampler sampler) {
+        return imageSampler(binding, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, dstArrayElement, view, sampler);
+    }
+
+    public DescriptorUpdateBuilder imageSampler(int binding, int layout, int dstArrayElement, VImageView view, VSampler sampler) {
         if (refSet != null && refSet.getBindingAt(binding) == null) {
             return this;
         }
@@ -194,6 +204,7 @@ public class DescriptorUpdateBuilder {
                 .sType$Default()
                 .dstBinding(binding)
                 .dstSet(set)
+                .dstArrayElement(dstArrayElement)
                 .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
                 .descriptorCount(1)
                 .pImageInfo(VkDescriptorImageInfo

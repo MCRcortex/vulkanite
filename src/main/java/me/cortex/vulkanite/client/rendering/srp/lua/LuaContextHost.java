@@ -14,8 +14,12 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.function.Function;
 
+import static me.cortex.vulkanite.client.rendering.srp.api.layout.LayoutBinding.ACCESS_READ;
+import static me.cortex.vulkanite.client.rendering.srp.api.layout.LayoutBinding.ACCESS_WRITE;
 import static me.cortex.vulkanite.client.rendering.srp.lua.LuaExternalObjects.*;
+import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
+import static org.lwjgl.vulkan.VK10.*;
 
 public class LuaContextHost {
     private final LuaFunctions functions = new LuaFunctions(this);
@@ -57,6 +61,24 @@ public class LuaContextHost {
         this.generationFunction.call();
     }
 
+    private void addConstants(LuaValue env) {
+        env.set("SHADER_RAY_GEN", VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+        env.set("SHADER_RAY_MISS", VK_SHADER_STAGE_MISS_BIT_KHR);
+        env.set("SHADER_RAY_CHIT", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
+        env.set("SHADER_RAY_AHIT", VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
+        env.set("SHADER_RAY_INTER", VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
+
+        env.set("ACCESS_READ", ACCESS_READ);
+        env.set("ACCESS_WRITE", ACCESS_WRITE);
+        env.set("ACCESS_RW", ACCESS_READ|ACCESS_WRITE);
+
+        env.set("LAYOUT_ACCELERATION", VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR);
+        env.set("LAYOUT_UNIFORM_BUFFER", VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        env.set("LAYOUT_STORAGE_BUFFER", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        env.set("LAYOUT_STORAGE_IMAGE", VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        env.set("LAYOUT_IMAGE_SAMPLER", VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    }
+
     private void addLuaStdLib(LuaTable table) {
         new Bit32Lib().call(LuaValue.valueOf("bit32"), table);
         new JseMathLib().call(LuaValue.valueOf("math"), table);
@@ -67,14 +89,11 @@ public class LuaContextHost {
     private LuaValue createStandardLibrary() {
         var env = new LuaTable();
         addLuaStdLib(env);
+        addConstants(env);
         env.set("ctx", createContextTable());
-        env.set("SHADER_RAY_GEN", VK_SHADER_STAGE_RAYGEN_BIT_KHR);
-        env.set("SHADER_RAY_MISS", VK_SHADER_STAGE_MISS_BIT_KHR);
-        env.set("SHADER_RAY_CHIT", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-        env.set("SHADER_RAY_AHIT", VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
-        env.set("SHADER_RAY_INTER", VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
         env.set("Buffer", new LuaJFunction(this.functions::Buffer));
         env.set("Image", new LuaJFunction(this.functions::Image));
+        env.set("Layout", new LuaJFunction(this.functions::Layout));
         env.set("ShaderModule", new LuaJFunction(this.functions::ShaderModule));
         env.set("RaytracePipeline", new LuaJFunction(this.functions::RaytracePipeline));
         env.set("RaytracePass", new LuaJFunction(this.functions::RaytracePass));
@@ -99,6 +118,7 @@ public class LuaContextHost {
         ctx.set("blockAtlasSpecular", new LuaJObj<>(BLOCK_ATLAS_SPECULAR));
         ctx.set("irisOutputTextures", LuaValue.listOf(Arrays.stream(IRIS_IMAGES).map(LuaJObj::new).toArray(LuaValue[]::new)));
         ctx.set("terrainGeometrySet", new LuaJObj<>(TERRAIN_GEOMETRY_LAYOUT));
+        ctx.set("entityDataSet", new LuaJObj<>(ENTITY_DATA_LAYOUT));
         return ctx;
     }
 
