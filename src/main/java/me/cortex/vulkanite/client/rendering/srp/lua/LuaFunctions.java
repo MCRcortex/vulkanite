@@ -216,7 +216,9 @@ public class LuaFunctions {
 
     public LuaValue RaytracePass(LuaValue arg) {
         var pass = new TracePass(((LuaJObj<TracePipeline>)arg.get("pipeline")).get(), ()-> new Vector3i(ExecutionConstants.INSTANCE.getScreenSize(), 1));
-
+        if (arg.get("name") != LuaValue.NIL) {
+            pass.name(arg.get("name").checkjstring());
+        }
         var bindingTable = arg.get("sets").checktable();
         for (int index = 1; index < bindingTable.keyCount()+1; index++) {
             var bindingSetObject = bindingTable.get(index);
@@ -237,7 +239,9 @@ public class LuaFunctions {
 
     public LuaValue ComputePass(LuaValue arg) {
         var pass = new ComputePass(((LuaJObj<ComputePipeline>)arg.get("pipeline")).get(), ()-> new Vector3i(ExecutionConstants.INSTANCE.getScreenSize(), 1));
-
+        if (arg.get("name") != LuaValue.NIL) {
+            pass.name(arg.get("name").checkjstring());
+        }
         var bindingTable = arg.get("sets").checktable();
         for (int index = 1; index < bindingTable.keyCount()+1; index++) {
             var bindingSetObject = bindingTable.get(index);

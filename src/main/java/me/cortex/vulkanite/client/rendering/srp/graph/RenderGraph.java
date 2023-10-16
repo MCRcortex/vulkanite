@@ -9,6 +9,7 @@ import me.cortex.vulkanite.client.rendering.srp.graph.resource.ExternalResource;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.Resource;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class RenderGraph implements VirtualResourceMapper {
     private final Reference2ObjectMap<Pass<?>, Set<Pass<?>>> dependents = new Reference2ObjectOpenHashMap<>();
@@ -111,5 +112,18 @@ public class RenderGraph implements VirtualResourceMapper {
         }
 
         sort.add(current);
+    }
+
+    @Override
+    public String toString() {
+        String out = "Execution Ordering:\n";
+        for (var pass : this.ordering) {
+            out += "- " + pass.name() + " uses: " + pass.uses().stream().map(a->a.name()==null? a.getClass().getTypeName():a.name()).collect(Collectors.joining(", "))+"\n";
+        }
+        out += "All used resources:\n";
+        for (var resource : this.graphResources) {
+            out += "- " + (resource.name() == null?resource.getClass().getTypeName():resource.name()) + "\n";
+        }
+        return out;
     }
 }

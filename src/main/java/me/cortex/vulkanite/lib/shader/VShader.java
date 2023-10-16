@@ -53,7 +53,7 @@ public class VShader extends TrackedResourceObject {
     }
 
     public static VShader compileLoad(VContext ctx, String source, int stage) {
-        return compileLoad(ctx,ShaderCompiler.compileShader("shader", source, stage), stage);
+        return compileLoad(ctx, ShaderCompiler.compileShader("shader", source, stage), stage);
     }
 
     @Override

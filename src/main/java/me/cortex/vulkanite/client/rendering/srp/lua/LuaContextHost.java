@@ -67,6 +67,7 @@ public class LuaContextHost {
         env.set("SHADER_RAY_CHIT", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
         env.set("SHADER_RAY_AHIT", VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
         env.set("SHADER_RAY_INTER", VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
+        env.set("SHADER_COMPUTE", VK_SHADER_STAGE_COMPUTE_BIT);
 
         env.set("ACCESS_READ", ACCESS_READ);
         env.set("ACCESS_WRITE", ACCESS_WRITE);

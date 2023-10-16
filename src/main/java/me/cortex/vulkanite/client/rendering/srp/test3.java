@@ -25,6 +25,7 @@ public class test3 {
         System.err.println("Done");
         Thread.sleep(1000);
         Vulkanite.INSTANCE.destroy();
+        System.err.println(host.getGraph());
         System.gc();
     }
 }
