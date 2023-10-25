@@ -2,9 +2,12 @@ package me.cortex.vulkanite.client.rendering.srp.graph.phase.pipeline;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
+import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.client.rendering.Callback;
 import me.cortex.vulkanite.client.rendering.srp.api.VirtualResourceMapper;
-import me.cortex.vulkanite.client.rendering.srp.api.execution.DescriptorSetBuilder;
+import me.cortex.vulkanite.client.rendering.srp.api.execution.BatchedUpdateDescriptorSet;
 import me.cortex.vulkanite.client.rendering.srp.api.layout.Layout;
 import me.cortex.vulkanite.client.rendering.srp.api.pipeline.Pipeline;
 import me.cortex.vulkanite.client.rendering.srp.graph.phase.Pass;
@@ -19,6 +22,8 @@ public abstract class PipelinePass<T extends PipelinePass<T, J, P>, J extends Pi
     protected final Map<Layout, Object> layoutBindings = new HashMap<>();
 
     private final List<Function<VCmdBuff, Long>> descriptorSetProviders = new ArrayList<>();
+
+    private final List<Callback> onDestroy = new ArrayList<>();
 
     public PipelinePass(Pipeline<J, P> pipeline) {
         this.pipeline = pipeline;
@@ -90,6 +95,7 @@ public abstract class PipelinePass<T extends PipelinePass<T, J, P>, J extends Pi
     }
 
     protected void validateLayoutBindings(VirtualResourceMapper resourceMapper) {
+
         //Verify that the all the layout exist
         if (!(this.layoutBindings.keySet().containsAll(this.pipeline.getLayouts()) &&
                 new HashSet<>(this.pipeline.getLayouts()).containsAll(this.layoutBindings.keySet()))) {
@@ -137,8 +143,9 @@ public abstract class PipelinePass<T extends PipelinePass<T, J, P>, J extends Pi
                         throw new IllegalStateException("Binding type and point type are not the same");
                     }
                 }
-                var descriptorSet = DescriptorSetBuilder.createDescriptorSet(resourceMapper, layout, bindings);
+                var descriptorSet = new BatchedUpdateDescriptorSet(Vulkanite.INSTANCE.getCtx(), resourceMapper, layout, bindings);
                 this.descriptorSetProviders.add(descriptorSet::updateAndGetSet);
+                this.onDestroy.add(descriptorSet::destroy);
             } else {
                 throw new IllegalStateException("Unknown binding method " + bindingObject);
             }
@@ -151,5 +158,13 @@ public abstract class PipelinePass<T extends PipelinePass<T, J, P>, J extends Pi
             sets[i] = this.descriptorSetProviders.get(i).apply(cmd);
         }
         return sets;
+    }
+
+    @Override
+    public void destroy() {
+        super.destroy();
+        this.onDestroy.forEach(Callback::callback);
+        this.onDestroy.clear();
+        this.descriptorSetProviders.clear();
     }
 }

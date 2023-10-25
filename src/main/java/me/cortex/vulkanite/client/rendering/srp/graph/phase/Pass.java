@@ -1,7 +1,6 @@
 package me.cortex.vulkanite.client.rendering.srp.graph.phase;
 
 import me.cortex.vulkanite.client.rendering.srp.api.VirtualResourceMapper;
-import me.cortex.vulkanite.client.rendering.srp.api.execution.DescriptorSetBuilder;
 import me.cortex.vulkanite.client.rendering.srp.api.execution.ExecutionContext;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.Resource;
 
@@ -45,4 +44,7 @@ public abstract class Pass<T extends Pass<T>> {
     public void execute(ExecutionContext ctx) {
         throw new IllegalStateException("Execution not implemented");
     }
+
+    //Used to destroy any concrete resources associated with the pass such as descriptor sets
+    public void destroy() {}
 }

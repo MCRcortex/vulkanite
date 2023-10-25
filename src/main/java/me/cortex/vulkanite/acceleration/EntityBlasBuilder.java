@@ -69,7 +69,7 @@ public class EntityBlasBuilder {
     private record BuildInfo(VertexFormat format, int quadCount, long address) {}
     Pair<VAccelerationStructure, VBuffer> buildBlas(List<Pair<RenderLayer, BufferBuilder.BuiltBuffer>> renders, VCmdBuff cmd, VFence fence) {
         var descriptorSet = ENTITY_POOL.allocateSet();
-        ctx.sync.addCallback(fence, ()->Vulkanite.INSTANCE.addSyncedCallback(descriptorSet::free));
+        ctx.sync.addCallback(fence, ()->Vulkanite.INSTANCE.addSyncedCallback(()->Vulkanite.INSTANCE.addSyncedCallback(descriptorSet::free)));
         LuaExternalObjects.ENTITY_DATA_LAYOUT.setConcrete(descriptorSet.set);
 
         long combined_size = 0;

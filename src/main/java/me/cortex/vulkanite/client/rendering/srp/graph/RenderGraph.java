@@ -3,9 +3,13 @@ package me.cortex.vulkanite.client.rendering.srp.graph;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectOpenHashMap;
 import me.cortex.vulkanite.client.rendering.srp.api.VirtualResourceMapper;
-import me.cortex.vulkanite.client.rendering.srp.api.execution.ExecutionContext;
+import me.cortex.vulkanite.client.rendering.srp.api.concreate.MutConcreteBufferInfo;
+import me.cortex.vulkanite.client.rendering.srp.api.concreate.MutConcreteImageInfo;
+import me.cortex.vulkanite.client.rendering.srp.api.layout.LayoutCache;
 import me.cortex.vulkanite.client.rendering.srp.graph.phase.Pass;
+import me.cortex.vulkanite.client.rendering.srp.graph.resource.BufferResource;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.ExternalResource;
+import me.cortex.vulkanite.client.rendering.srp.graph.resource.ImageResource;
 import me.cortex.vulkanite.client.rendering.srp.graph.resource.Resource;
 
 import java.util.*;
@@ -16,14 +20,19 @@ public class RenderGraph implements VirtualResourceMapper {
     private final List<Resource<?>> outputs;
 
     private final Set<Resource<?>> graphResources = new LinkedHashSet<>();
+    private final LayoutCache layoutCache;
 
     final List<Pass<?>> ordering = new ArrayList<>();
 
     public RenderGraph(Resource<?>... outputs) {
-        this(List.of(outputs));
+        this(null, outputs);
+    }
+    public RenderGraph(LayoutCache layoutCache, Resource<?>... outputs) {
+        this(List.of(outputs), layoutCache);
     }
 
-    public RenderGraph(List<Resource<?>> outputs) {
+    public RenderGraph(List<Resource<?>> outputs, LayoutCache layoutCache) {
+        this.layoutCache = layoutCache;
         this.outputs = outputs;
         this.outputs.forEach(this::addResourceToGraph);
         this.topologicalSort(outputs);
@@ -98,6 +107,7 @@ public class RenderGraph implements VirtualResourceMapper {
         this.ordering.clear();
         this.ordering.addAll(ordering);
     }
+
     private void topologicalSort0(Set<Pass<?>> seen, Pass<?> current, int depth, List<Pass<?>> sort) {
         //TODO: want to actually find the range in which the phases can run
         // or somehow want to optimize/reduce the amount of memory needed to run everything
@@ -125,5 +135,23 @@ public class RenderGraph implements VirtualResourceMapper {
             out += "- " + (resource.name() == null?resource.getClass().getTypeName():resource.name()) + "\n";
         }
         return out;
+    }
+
+    public LayoutCache getLayoutCacheOrNull() {
+        return this.layoutCache;
+    }
+
+    public MutConcreteBufferInfo getConcreteResourceBindingInfo(BufferResource resource, Pass<?> pass) {
+        return null;
+    }
+
+    public MutConcreteImageInfo getConcreteResourceBindingInfo(ImageResource resource, Pass<?> pass) {
+        return null;
+    }
+
+    public void destroy() {
+        for (Pass<?> pass : this.ordering) {
+            pass.destroy();
+        }
     }
 }

@@ -262,7 +262,10 @@ public class LuaFunctions {
 
     public LuaValue setOutput(LuaValue arg) {
         var output = ((LuaJObj<Resource<?>>)arg.get(1)).get();
-        this.graph = new RenderGraph(output);
+        if (this.graph != null) {
+            this.graph.destroy();
+        }
+        this.graph = new RenderGraph(this.layoutCache, output);
         return LuaValue.NIL;
     }
 
