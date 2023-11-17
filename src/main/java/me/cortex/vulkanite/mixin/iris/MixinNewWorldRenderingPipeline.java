@@ -4,21 +4,21 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap.Entry;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.client.rendering.VulkanPipeline;
-import me.cortex.vulkanite.compat.IGetRaytracingSource;
-import me.cortex.vulkanite.compat.IRenderTargetVkGetter;
-import me.cortex.vulkanite.compat.IVGImage;
-import me.cortex.vulkanite.compat.RaytracingShaderSet;
+import me.cortex.vulkanite.compat.*;
 import me.cortex.vulkanite.lib.base.VContext;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
 import net.coderbot.iris.gl.texture.TextureAccess;
 import net.coderbot.iris.gl.buffer.ShaderStorageBufferHolder;
+import net.coderbot.iris.gl.uniform.DynamicUniformHolder;
 import net.coderbot.iris.mixin.LevelRendererAccessor;
 import net.coderbot.iris.pipeline.CustomTextureManager;
 import net.coderbot.iris.pipeline.newshader.NewWorldRenderingPipeline;
 import net.coderbot.iris.rendertarget.RenderTargets;
 import net.coderbot.iris.shaderpack.ProgramSet;
 import net.coderbot.iris.shaderpack.texture.TextureStage;
+import net.coderbot.iris.uniforms.CelestialUniforms;
+import net.coderbot.iris.uniforms.custom.CustomUniforms;
 import net.minecraft.client.render.Camera;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
@@ -39,7 +39,8 @@ public class MixinNewWorldRenderingPipeline {
     @Shadow @Final private RenderTargets renderTargets;
     @Shadow @Final private CustomTextureManager customTextureManager;
     @Shadow private ShaderStorageBufferHolder shaderStorageBufferHolder;
-  
+
+    @Shadow @Final private float sunPathRotation;
     @Unique private RaytracingShaderSet[] rtShaderPasses = null;
     @Unique private VContext ctx;
     @Unique private VulkanPipeline pipeline;
@@ -55,11 +56,9 @@ public class MixinNewWorldRenderingPipeline {
 
         entryList.sort(Comparator.comparing(Entry::getKey));
 
-        VGImage[] sortedTextures = entryList.stream()
+        return entryList.stream()
                 .map(entry -> ((IVGImage) entry.getValue()).getVGImage())
                 .toArray(VGImage[]::new);
-
-        return sortedTextures;
     }
 
     @Inject(method = "<init>", at = @At("TAIL"))
@@ -88,7 +87,10 @@ public class MixinNewWorldRenderingPipeline {
         for (int i = 0; i < renderTargets.getRenderTargetCount(); i++) {
             outImgs.add(((IRenderTargetVkGetter)renderTargets.getOrCreate(i)).getMain());
         }
-        pipeline.renderPostShadows(outImgs, par2, buffers);
+
+        MixinCelestialUniforms celestialUniforms = (MixinCelestialUniforms)(Object) new CelestialUniforms(this.sunPathRotation);
+
+        pipeline.renderPostShadows(outImgs, par2, buffers, celestialUniforms);
     }
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))

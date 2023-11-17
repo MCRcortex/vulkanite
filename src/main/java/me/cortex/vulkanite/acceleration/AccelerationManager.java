@@ -7,6 +7,9 @@ import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
+import net.minecraft.client.render.BufferBuilder;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.util.Pair;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -28,6 +31,11 @@ public class AccelerationManager {
 
     public void chunkBuilds(List<ChunkBuildOutput> results) {
         blasBuilder.enqueue(results);
+    }
+
+
+    public void setEntityData(List<Pair<RenderLayer, BufferBuilder.BuiltBuffer>> data) {
+        tlasManager.setEntityData(data);
     }
 
     private final List<VSemaphore> syncs = new LinkedList<>();

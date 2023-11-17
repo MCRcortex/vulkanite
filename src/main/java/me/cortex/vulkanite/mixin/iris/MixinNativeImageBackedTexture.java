@@ -46,7 +46,6 @@ public abstract class MixinNativeImageBackedTexture extends AbstractTexture impl
                 width,
                 height,
                 1,
-                1,
                 VK_FORMAT_R8G8B8A8_UNORM,
                 GL_RGBA8,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,

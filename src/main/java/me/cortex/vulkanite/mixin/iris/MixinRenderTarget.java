@@ -71,8 +71,8 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
 
         int vkfmt = FormatConverter.getVkFormatFromGl(internalFormat);
 
-        vgMainTexture = ctx.memory.createSharedImage(width, height, 1, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        vgAltTexture = ctx.memory.createSharedImage(width, height, 1, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vgMainTexture = ctx.memory.createSharedImage(width, height, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vgAltTexture = ctx.memory.createSharedImage(width, height, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         vgMainTexture.setDebugUtilsObjectName("RenderTarget Main");
         vgAltTexture.setDebugUtilsObjectName("RenderTarget Alt");
         Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {

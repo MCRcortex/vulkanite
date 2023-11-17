@@ -42,6 +42,8 @@ public class MixinAbstractTexture implements IVGImage {
     private void redirectClear(CallbackInfo ci) {
         if (vgImage != null) {
             Vulkanite.INSTANCE.addSyncedCallback(vgImage::free);
+            vgImage = null;
+            glId = -1;
             ci.cancel();
         }
     }

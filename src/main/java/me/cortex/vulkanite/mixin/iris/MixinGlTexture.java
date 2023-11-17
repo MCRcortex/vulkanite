@@ -42,6 +42,7 @@ public abstract class MixinGlTexture extends MixinGlResource implements IVGImage
 
         sharedImage = Vulkanite.INSTANCE.getCtx().memory
             .createSharedImage(
+                    (sizeZ == 1 && sizeY == 1? 1 : (sizeZ == 1?2:3)),
                     sizeX,
                     sizeY,
                     sizeZ,

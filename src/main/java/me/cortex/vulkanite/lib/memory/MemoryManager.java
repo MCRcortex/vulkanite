@@ -179,15 +179,18 @@ public class MemoryManager {
         }
     }
 
-    public VGImage createSharedImage(int width, int height, int depth, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
+    public VGImage createSharedImage(int width, int height, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
+        return createSharedImage(2, width, height, 1, mipLevels, vkFormat, glFormat, usage, properties);
+    }
+    public VGImage createSharedImage(int dimensions, int width, int height, int depth, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
 
         int vkImageType = VK_IMAGE_TYPE_2D;
         int glImageType = GL_TEXTURE_2D;
 
-        if(height == 1 && depth == 1) {
+        if(dimensions == 1) {
             vkImageType = VK_IMAGE_TYPE_1D;
             glImageType = GL_TEXTURE_1D;
-        } else if (height != 1 && depth != 1) {
+        } else if (dimensions == 3) {
             vkImageType = VK_IMAGE_TYPE_3D;
             glImageType = GL_TEXTURE_3D;
         }
