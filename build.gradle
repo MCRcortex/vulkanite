@@ -103,83 +103,50 @@ publishing {
     }
 }
 
-
-import org.gradle.internal.os.OperatingSystem
-
-project.ext.lwjglVersion = "3.3.1"
-
-switch (OperatingSystem.current()) {
-    case OperatingSystem.LINUX:
-        def osArch = System.getProperty("os.arch")
-        project.ext.lwjglNatives = osArch.startsWith("arm") || osArch.startsWith("aarch64")
-                ? "natives-linux-${osArch.contains("64") || osArch.startsWith("armv8") ? "arm64" : "arm32"}"
-                : "natives-linux"
-        break
-    case OperatingSystem.WINDOWS:
-        project.ext.lwjglNatives = "natives-windows"
-        break
-}
-
-repositories {
-    mavenCentral()
-}
-project.ext.lwjglNatives = "natives-windows"
-
-dependencies {
-    implementation platform("org.lwjgl:lwjgl-bom:$lwjglVersion")
-
-    include(implementation("org.lwjgl:lwjgl-meshoptimizer"))
-    include(implementation("org.lwjgl:lwjgl-vma"))
-    include(implementation("org.lwjgl:lwjgl-vulkan"))
-    include(implementation("org.lwjgl:lwjgl-shaderc"))
-    include(implementation("org.lwjgl:lwjgl-spvc"))
-
-    include(runtimeOnly("org.lwjgl:lwjgl-meshoptimizer:$lwjglVersion:$lwjglNatives"))
-    include(runtimeOnly("org.lwjgl:lwjgl-vma:$lwjglVersion:$lwjglNatives"))
-    include(runtimeOnly("org.lwjgl:lwjgl-shaderc:$lwjglVersion:$lwjglNatives"))
-    include(runtimeOnly("org.lwjgl:lwjgl-spvc:$lwjglVersion:$lwjglNatives"))
-
-    include(implementation("org.lwjgl:lwjgl-meshoptimizer:$lwjglVersion:$lwjglNatives"))
-    include(implementation("org.lwjgl:lwjgl-vma:$lwjglVersion:$lwjglNatives"))
-    include(implementation("org.lwjgl:lwjgl-shaderc:$lwjglVersion:$lwjglNatives"))
-    include(implementation("org.lwjgl:lwjgl-spvc:$lwjglVersion:$lwjglNatives"))
-
-
-    implementation "org.lwjgl:lwjgl"
-    implementation "org.lwjgl:lwjgl-glfw"
-    implementation "org.lwjgl:lwjgl-opengl"
-    runtimeOnly "org.lwjgl:lwjgl::$lwjglNatives"
-    runtimeOnly "org.lwjgl:lwjgl-glfw::$lwjglNatives"
-    runtimeOnly "org.lwjgl:lwjgl-opengl::$lwjglNatives"
-}
-
-
 project.ext.lwjglVersion = "3.3.1"
 project.ext.jomlVersion = "1.10.4"
 project.ext.winNatives = "natives-windows"
 project.ext.linuxNatives = "natives-linux"
+project.ext.macosNatives = "natives-macos-arm64"
 
 dependencies {
-    include(implementation("org.lwjgl:lwjgl:$lwjglVersion"))
-    include(implementation("org.lwjgl:lwjgl-vulkan:$lwjglVersion"))
-    include(implementation("org.lwjgl:lwjgl-vma:$lwjglVersion"))
     include(implementation("org.joml:joml:${jomlVersion}"))
+
+    include(implementation("org.lwjgl:lwjgl:$lwjglVersion"))
+    include(runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:$winNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:$linuxNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:$macosNatives"))
+
+    include(implementation("org.lwjgl:lwjgl-vulkan:$lwjglVersion"))
+    include(runtimeOnly("org.lwjgl:lwjgl-vulkan:$lwjglVersion:$macosNatives"))
+
+    include(implementation("org.lwjgl:lwjgl-spvc:$lwjglVersion"))
+    include(runtimeOnly("org.lwjgl:lwjgl-spvc:$lwjglVersion:$winNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-spvc:$lwjglVersion:$linuxNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-spvc:$lwjglVersion:$macosNatives"))
+
+    include(implementation("org.lwjgl:lwjgl-vma:$lwjglVersion"))
     include(runtimeOnly("org.lwjgl:lwjgl-vma:$lwjglVersion:$winNatives"))
     include(runtimeOnly("org.lwjgl:lwjgl-vma:$lwjglVersion:$linuxNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-vma:$lwjglVersion:$macosNatives"))
 
     include(implementation("org.lwjgl:lwjgl-glfw:$lwjglVersion"))
     include(runtimeOnly("org.lwjgl:lwjgl-glfw:$lwjglVersion:$winNatives"))
     include(runtimeOnly("org.lwjgl:lwjgl-glfw:$lwjglVersion:$linuxNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-glfw:$lwjglVersion:$macosNatives"))
+
     include(implementation("org.lwjgl:lwjgl-stb:$lwjglVersion"))
     include(runtimeOnly("org.lwjgl:lwjgl-stb:$lwjglVersion:$winNatives"))
     include(runtimeOnly("org.lwjgl:lwjgl-stb:$lwjglVersion:$linuxNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-stb:$lwjglVersion:$macosNatives"))
+
     include(implementation("org.lwjgl:lwjgl-openal:$lwjglVersion"))
     include(runtimeOnly("org.lwjgl:lwjgl-openal:$lwjglVersion:$winNatives"))
     include(runtimeOnly("org.lwjgl:lwjgl-openal:$lwjglVersion:$linuxNatives"))
-    include(runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:$winNatives"))
-    include(runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:$linuxNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-openal:$lwjglVersion:$macosNatives"))
 
     include(implementation("org.lwjgl:lwjgl-shaderc:$lwjglVersion"))
     include(runtimeOnly("org.lwjgl:lwjgl-shaderc:$lwjglVersion:$winNatives"))
     include(runtimeOnly("org.lwjgl:lwjgl-shaderc:$lwjglVersion:$linuxNatives"))
+    include(runtimeOnly("org.lwjgl:lwjgl-shaderc:$lwjglVersion:$macosNatives"))
 }
