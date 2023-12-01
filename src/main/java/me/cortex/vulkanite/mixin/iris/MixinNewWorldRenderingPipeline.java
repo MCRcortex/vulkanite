@@ -67,6 +67,10 @@ public class MixinNewWorldRenderingPipeline {
     @Inject(method = "<init>", at = @At("TAIL"))
     private void injectRTShader(ProgramSet set, CallbackInfo ci) {
         ctx = Vulkanite.INSTANCE.getCtx();
+        if (this.pipeline != null) {
+            this.pipeline.destory();
+        }
+
         pipeline = new VkPipeline2(ctx, new LuaContextHost(path -> {
             try {
                 return Files.readAllBytes(new File("shaderpacks/testpack/shaders/" + path).toPath());

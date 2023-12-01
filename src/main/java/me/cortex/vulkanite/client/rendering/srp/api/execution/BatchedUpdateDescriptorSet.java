@@ -94,6 +94,6 @@ public class BatchedUpdateDescriptorSet {
     }
 
     public void destroy() {
-
+        this.pool.free();
     }
 }

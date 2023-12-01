@@ -18,7 +18,7 @@ public class VShader extends TrackedResourceObject {
     private final VContext ctx;
     public final long module;
     public final int stage;
-    public final ShaderReflection reflection;
+    private final ShaderReflection reflection;
 
     public ShaderReflection getReflection() {
         return reflection;

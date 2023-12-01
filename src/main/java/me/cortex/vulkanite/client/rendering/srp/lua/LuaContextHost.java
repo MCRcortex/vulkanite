@@ -61,24 +61,6 @@ public class LuaContextHost {
         this.generationFunction.call();
     }
 
-    private void addConstants(LuaValue env) {
-        env.set("SHADER_RAY_GEN", VK_SHADER_STAGE_RAYGEN_BIT_KHR);
-        env.set("SHADER_RAY_MISS", VK_SHADER_STAGE_MISS_BIT_KHR);
-        env.set("SHADER_RAY_CHIT", VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-        env.set("SHADER_RAY_AHIT", VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
-        env.set("SHADER_RAY_INTER", VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
-        env.set("SHADER_COMPUTE", VK_SHADER_STAGE_COMPUTE_BIT);
-
-        env.set("ACCESS_READ", ACCESS_READ);
-        env.set("ACCESS_WRITE", ACCESS_WRITE);
-        env.set("ACCESS_RW", ACCESS_READ|ACCESS_WRITE);
-
-        env.set("LAYOUT_ACCELERATION", VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR);
-        env.set("LAYOUT_UNIFORM_BUFFER", VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-        env.set("LAYOUT_STORAGE_BUFFER", VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-        env.set("LAYOUT_STORAGE_IMAGE", VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        env.set("LAYOUT_IMAGE_SAMPLER", VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    }
 
     private void addLuaStdLib(LuaTable table) {
         new Bit32Lib().call(LuaValue.valueOf("bit32"), table);
@@ -90,7 +72,7 @@ public class LuaContextHost {
     private LuaValue createStandardLibrary() {
         var env = new LuaTable();
         addLuaStdLib(env);
-        addConstants(env);
+        LuaConstants.addConstants(env);
         env.set("ctx", createContextTable());
         env.set("Buffer", new LuaJFunction(this.functions::Buffer));
         env.set("Image", new LuaJFunction(this.functions::Image));

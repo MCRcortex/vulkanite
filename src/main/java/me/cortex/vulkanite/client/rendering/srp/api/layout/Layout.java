@@ -6,8 +6,8 @@ import java.util.Objects;
 
 public class Layout {
     private final List<LayoutBinding> bindings = new ArrayList<>();
-
     private final int hash;
+
     public Layout(LayoutBinding... bindings) {
         this(List.of(bindings));
     }

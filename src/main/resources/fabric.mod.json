@@ -17,5 +17,6 @@
     "fabricloader": ">=0.14.21",
     "iris": "=1.6.10",
     "sodium": "=0.5.3"
-  }
+  },
+  "accessWidener": "vulkanite.accesswidener"
 }
