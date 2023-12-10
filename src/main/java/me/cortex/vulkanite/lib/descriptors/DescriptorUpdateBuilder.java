@@ -15,6 +15,7 @@ import org.lwjgl.vulkan.VkWriteDescriptorSetAccelerationStructureKHR;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 import static org.lwjgl.vulkan.VK10.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class DescriptorUpdateBuilder {
@@ -22,6 +23,8 @@ public class DescriptorUpdateBuilder {
     private final MemoryStack stack;
     private final VkWriteDescriptorSet.Buffer updates;
     private final VImageView placeholderImageView;
+    private ArrayList<VkDescriptorBufferInfo.Buffer> bulkBufferInfos = new ArrayList<>();
+    private ArrayList<VkDescriptorImageInfo.Buffer> bulkImageInfos = new ArrayList<>();
     private ShaderReflection.Set refSet = null;
 
     public DescriptorUpdateBuilder(VContext ctx, int maxUpdates) {
@@ -30,7 +33,15 @@ public class DescriptorUpdateBuilder {
 
     public DescriptorUpdateBuilder(VContext ctx, int maxUpdates, VImageView placeholderImageView) {
         this.ctx = ctx;
-        this.stack = MemoryStack.stackPush();
+        // this.stack = MemoryStack.stackPush();
+        int objSize = Integer.max(
+                Integer.max(
+                        VkDescriptorBufferInfo.SIZEOF,
+                        VkDescriptorImageInfo.SIZEOF),
+                VkWriteDescriptorSetAccelerationStructureKHR.SIZEOF);
+        objSize = ((objSize + 15) / 16) * 16;
+        this.stack = MemoryStack.create(1024 + maxUpdates * VkWriteDescriptorSet.SIZEOF + maxUpdates * objSize);
+        this.stack.push();
         this.updates = VkWriteDescriptorSet.calloc(maxUpdates, stack);
         this.placeholderImageView = placeholderImageView;
     }
@@ -81,7 +92,7 @@ public class DescriptorUpdateBuilder {
         if (refSet != null && refSet.getBindingAt(binding) == null) {
             return this;
         }
-        var bufInfo = VkDescriptorBufferInfo.calloc(buffers.size(), stack);
+        var bufInfo = VkDescriptorBufferInfo.calloc(buffers.size());
         for (int i = 0; i < buffers.size(); i++) {
             bufInfo.get(i)
                     .buffer(buffers.get(i).buffer())
@@ -96,7 +107,7 @@ public class DescriptorUpdateBuilder {
                 .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
                 .descriptorCount(buffers.size())
                 .pBufferInfo(bufInfo);
-
+        bulkBufferInfos.add(bufInfo);
         return this;
     }
 
@@ -147,7 +158,7 @@ public class DescriptorUpdateBuilder {
         if (refSet != null && refSet.getBindingAt(binding) == null) {
             return this;
         }
-        var imgInfo = VkDescriptorImageInfo.calloc(views.size(), stack);
+        var imgInfo = VkDescriptorImageInfo.calloc(views.size());
         for (int i = 0; i < views.size(); i++) {
             imgInfo.get(i)
                     .imageLayout(VK_IMAGE_LAYOUT_GENERAL)
@@ -160,6 +171,7 @@ public class DescriptorUpdateBuilder {
                 .descriptorType(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
                 .descriptorCount(views.size())
                 .pImageInfo(imgInfo);
+        bulkImageInfos.add(imgInfo);
         return this;
     }
     public DescriptorUpdateBuilder imageStore(int binding, VImageView view) {
@@ -209,5 +221,13 @@ public class DescriptorUpdateBuilder {
         updates.rewind();
         vkUpdateDescriptorSets(ctx.device, updates, null);
         stack.pop();
+        for (var bufInfo : bulkBufferInfos) {
+            bufInfo.free();
+        }
+        bulkBufferInfos.clear();
+        for (var imgInfo : bulkImageInfos) {
+            imgInfo.free();
+        }
+        bulkImageInfos.clear();
     }
 }

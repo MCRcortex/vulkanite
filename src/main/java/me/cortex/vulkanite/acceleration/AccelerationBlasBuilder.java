@@ -97,7 +97,7 @@ public class AccelerationBlasBuilder {
                         };
                         
                         layout(push_constant) uniform PushConstants {
-                            uint32_t nVertices;
+                            uint64_t nVertices;
                             uint64_t inAddr;
                             uint64_t outAddr;
                         };
@@ -107,7 +107,7 @@ public class AccelerationBlasBuilder {
                             uint32_t gridSize = gl_NumWorkGroups.x * gl_WorkGroupSize.x;
                             InputVertices inputs = InputVertices(inAddr);
                             OutputVertices outputs = OutputVertices(outAddr);
-                            for (idx; idx < nVertices; idx += gridSize) {
+                            for (idx; idx < uint32_t(nVertices); idx += gridSize) {
                                 vec3 position = vec3(inputs.vertices[idx].position.xyz) * (32.0 / 65536.0) - 8.0;
                                 outputs.vertices[idx * 3 + 0] = position.x;
                                 outputs.vertices[idx * 3 + 1] = position.y;
@@ -144,7 +144,7 @@ public class AccelerationBlasBuilder {
                 }
                 int i = -1;
                 //Collect the job batch
-                while (!this.batchedJobs.isEmpty()) {
+                while (!this.batchedJobs.isEmpty() && jobs.size() < 32) {
                     i++;
                     jobs.addAll(this.batchedJobs.poll());
                 }
@@ -159,10 +159,7 @@ public class AccelerationBlasBuilder {
             }
             var sinlgeUsePoolWorker = context.cmd.getSingleUsePool();
             sinlgeUsePoolWorker.doReleases();
-            if (jobs.size() > 100) {
-                System.err.println("EXCESSIVE JOBS FOR SOME REASON AAAAAAAAAA");
-                //while (true);
-            }
+
             //Jobs are batched and built on the async vulkan queue then block synchronized with fence
             // which then results in compaction and dispatch to consumer
 
@@ -181,6 +178,7 @@ public class AccelerationBlasBuilder {
 
                 //Fill in the buildInfo and buildRanges
                 int i = -1;
+                vkCmdBindPipeline(uploadBuildCmd.buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpuVertexDecodePipeline.pipeline());
                 for (var job : jobs) {
                     i++;
                     var brs = VkAccelerationStructureBuildRangeInfoKHR.calloc(job.geometries.size(), stack);
@@ -200,7 +198,7 @@ public class AccelerationBlasBuilder {
                     }
 
                     var buildBuffer = context.memory.createBuffer(buildBufferSize,
-                            VK_BUFFER_USAGE_TRANSFER_DST_BIT
+                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
                                     | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
                                     | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -209,6 +207,9 @@ public class AccelerationBlasBuilder {
                     buffersToFree.add(buildBuffer);
                     var buildBufferAddr = buildBuffer.deviceAddress();
                     long buildBufferOffset = 0;
+
+                    uploadBuildCmd.encodeBufferBarrier(buildBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
                     for (int geoIdx = 0; geoIdx < job.geometries.size(); geoIdx++) {
                         var geometry = job.geometries.get(geoIdx);
@@ -221,12 +222,20 @@ public class AccelerationBlasBuilder {
                         // 1: inAddr
                         // 2: outAddr
                         var pushConstant = new long[3];
+                        var geometryInputBuffer = job.data.geometryBuffers().get(geoIdx);
                         pushConstant[0] = geometry.quadCount * 4;
-                        pushConstant[1] = job.data.geometryBuffers().get(geoIdx).deviceAddress();
+                        pushConstant[1] = geometryInputBuffer.deviceAddress();
                         pushConstant[2] = buildBufferAddr + buildBufferOffset;
-                        vkCmdBindPipeline(uploadBuildCmd.buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpuVertexDecodePipeline.pipeline());
+                        if (pushConstant[1] == 0) {
+                            throw new IllegalStateException("Geometry input buffer address is 0");
+                        }
+                        if (pushConstant[2] == 0) {
+                            throw new IllegalStateException("Build buffer address is 0");
+                        }
                         vkCmdPushConstants(uploadBuildCmd.buffer, gpuVertexDecodePipeline.layout(), VK_SHADER_STAGE_ALL, 0, pushConstant);
-                        vkCmdDispatch(uploadBuildCmd.buffer, Math.min((geometry.quadCount * 4 + 255) / 256, 128), 1, 1);
+                        uploadBuildCmd.encodeBufferBarrier(geometryInputBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                        vkCmdDispatch(uploadBuildCmd.buffer, Math.min((geometry.quadCount * 4 + 255) / 256, 256), 1, 1);
 
                         VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(context,
                                 uploadBuildCmd,
