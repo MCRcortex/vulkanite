@@ -18,6 +18,7 @@ import java.util.function.Function;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memUTF8;
+import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.*;
 
@@ -26,6 +27,7 @@ public class VInitializer {
     private VkPhysicalDevice physicalDevice;
     private VkDevice device;
     private int queueCount;
+    private long debugMessenger = 0;
     public VInitializer(String appName, String engineName, int major, int minor, String[] extensions, String[] layers) {
         try (MemoryStack stack = stackPush()) {
             VkApplicationInfo appInfo = VkApplicationInfo.calloc(stack)
@@ -44,6 +46,24 @@ public class VInitializer {
             _CHECK_(vkCreateInstance(instanceCreateInfo, null, result));
 
             instance = new VkInstance(result.get(0), instanceCreateInfo);
+
+            if (Arrays.asList(extensions).contains(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
+                VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = VkDebugUtilsMessengerCreateInfoEXT.calloc(stack)
+                        .sType$Default()
+                        .messageSeverity(VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+                        .messageType(VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT)
+                        .pfnUserCallback((messageSeverity, messageTypes, pCallbackData, pUserData) -> {
+                            VkDebugUtilsMessengerCallbackDataEXT callbackData = VkDebugUtilsMessengerCallbackDataEXT.create(pCallbackData);
+                            System.err.println("Validation layer: " + callbackData.pMessageString());
+                            Thread.dumpStack();
+                            return VK_FALSE;
+                        });
+
+                var pDebugMessenger = stack.mallocLong(1);
+                _CHECK_(vkCreateDebugUtilsMessengerEXT(instance, debugCreateInfo, null, pDebugMessenger));
+                debugMessenger = pDebugMessenger.get(0);
+                // Runtime.getRuntime().addShutdownHook(new Thread(() -> vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, null)));
+            }
         }
     }
 
@@ -61,7 +81,7 @@ public class VInitializer {
     }
 
     //TODO: add nice queue creation system
-    public void createDevice(List<String> extensions, List<String> layers, float[] queuePriorities, Consumer<VkPhysicalDeviceFeatures> deviceFeatures, List<Function<MemoryStack, Struct>> applicators) {
+    public void createDevice(List<String> extensions, List<String> layers, float[] queuePriorities, Consumer<VkPhysicalDeviceFeatures> deviceFeatures, List<Function<MemoryStack, Struct>> applicators, List<Consumer<Struct>> postApplicators) {
         var deviceExtensions = new HashSet<>(getDeviceExtensionStrings(physicalDevice));
         for (var extension : extensions) {
             if (!deviceExtensions.contains(extension)) {
@@ -93,10 +113,15 @@ public class VInitializer {
 
             long chain = createInfo.address();
             var deviceProperties2 = VkPhysicalDeviceFeatures2.calloc(stack).sType$Default();
-            for (var applicator : applicators) {
+            if (postApplicators.size() != applicators.size()) {
+                throw new IllegalStateException("Post applicators and applicators must be the same size");
+            }
+            for (int i = 0; i < applicators.size(); i++) {
+                var applicator = applicators.get(i);
                 Struct feature = applicator.apply(stack);
                 deviceProperties2.pNext(feature.address());
                 vkGetPhysicalDeviceFeatures2(physicalDevice, deviceProperties2);
+                postApplicators.get(i).accept(feature);
                 long next = feature.address();
                 MemoryUtil.memPutAddress(chain+8, next);
                 chain = next;
@@ -165,6 +190,6 @@ public class VInitializer {
 
     public VContext createContext() {
         //TODO:FIXME: DONT HARDCODE THE FACT IT HAS DEVICE ADDRESSES
-        return new VContext(device, queueCount, true);
+        return new VContext(device, queueCount, true, debugMessenger != 0);
     }
 }

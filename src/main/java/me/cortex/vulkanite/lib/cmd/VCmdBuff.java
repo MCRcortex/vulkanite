@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.cmd;
 
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.memory.MemoryManager;
 import me.cortex.vulkanite.lib.memory.VBuffer;
@@ -61,6 +62,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
         VBuffer staging = manager.createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0,
                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        staging.setDebugUtilsObjectName("Data Upload Host Staging");
         long ptr = staging.map();
         MemoryUtil.memCopy(src, ptr, size);
         staging.unmap();
@@ -78,6 +80,7 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
         VBuffer staging = manager.createBuffer(srcSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0,
                 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+        staging.setDebugUtilsObjectName("Image Upload Host Staging");
         long ptr = staging.map();
         MemoryUtil.memCopy(src, ptr, srcSize);
         staging.unmap();
@@ -109,57 +112,31 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
     }
 
     public static int dstStageToAccess(int dstStage) {
-        switch (dstStage) {
-            case VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:
-                return VK_ACCESS_MEMORY_READ_BIT;
-            case VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT:
-                return VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-            case VK_PIPELINE_STAGE_VERTEX_INPUT_BIT:
-                return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-            case VK_PIPELINE_STAGE_VERTEX_SHADER_BIT:
-            case VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:
-            case VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT:
-            case VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:
-            case VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT:
-            case VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT:
-            case VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR:
-                return VK_ACCESS_SHADER_READ_BIT;
-            case VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT:
-                return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-            case VK_PIPELINE_STAGE_TRANSFER_BIT:
-                return VK_ACCESS_TRANSFER_READ_BIT;
-            case VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR:
-                return VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_SHADER_READ_BIT;
-            default:
-                return VK_ACCESS_MEMORY_READ_BIT;
-        }
+        return switch (dstStage) {
+            case VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT -> VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_INPUT_BIT -> VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR ->
+                    VK_ACCESS_SHADER_READ_BIT;
+            case VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT -> VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            case VK_PIPELINE_STAGE_TRANSFER_BIT -> VK_ACCESS_TRANSFER_READ_BIT;
+            case VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR ->
+                    VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_SHADER_READ_BIT;
+            default -> VK_ACCESS_MEMORY_READ_BIT;
+        };
     }
 
     public static int srcStageToAccess(int srcStage) {
-        switch (srcStage) {
-            case VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:
-                return VK_ACCESS_MEMORY_WRITE_BIT;
-            case VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT:
-                return VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-            case VK_PIPELINE_STAGE_VERTEX_INPUT_BIT:
-                return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-            case VK_PIPELINE_STAGE_VERTEX_SHADER_BIT:
-            case VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:
-            case VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT:
-            case VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:
-            case VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT:
-            case VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT:
-            case VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR:
-                return VK_ACCESS_SHADER_WRITE_BIT;
-            case VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT:
-                return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            case VK_PIPELINE_STAGE_TRANSFER_BIT:
-                return VK_ACCESS_TRANSFER_WRITE_BIT;
-            case VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR:
-                return VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR | VK_ACCESS_SHADER_WRITE_BIT;
-            default:
-                return VK_ACCESS_MEMORY_WRITE_BIT;
-        }
+        return switch (srcStage) {
+            case VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT -> VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_INPUT_BIT -> VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT, VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR ->
+                    VK_ACCESS_SHADER_WRITE_BIT;
+            case VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT -> VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            case VK_PIPELINE_STAGE_TRANSFER_BIT -> VK_ACCESS_TRANSFER_WRITE_BIT;
+            case VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR ->
+                    VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR | VK_ACCESS_SHADER_WRITE_BIT;
+            default -> VK_ACCESS_MEMORY_WRITE_BIT;
+        };
     }
 
     public void encodeBufferBarrier(VBuffer buffer, long offset, long size) {
@@ -177,17 +154,50 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
         }
     }
 
-    public void encodeImageTransition(VImage image, int src, int dst, int aspectMask, int mipLevels) {
-        encodeImageTransition(image, src, dst, aspectMask, mipLevels, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    public int srcLayoutToStage(int srcLayout) {
+        return switch (srcLayout) {
+            case VK_IMAGE_LAYOUT_UNDEFINED -> VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL -> VK_PIPELINE_STAGE_TRANSFER_BIT;
+            case VK_IMAGE_LAYOUT_GENERAL -> VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ->
+                    VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+            default -> VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        };
     }
 
-    public void encodeImageTransition(VImage image, int src, int dst, int aspectMask, int mipLevels, int srcStage, int dstStage) {
+    public int layoutToAccess(int srcLayout) {
+        return switch (srcLayout) {
+            case VK_IMAGE_LAYOUT_UNDEFINED -> 0;
+            case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL -> VK_ACCESS_TRANSFER_READ_BIT;
+            case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL -> VK_ACCESS_TRANSFER_WRITE_BIT;
+            case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL -> VK_ACCESS_SHADER_READ_BIT;
+            default -> VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        };
+    }
+
+    public int dstLayoutToStage(int dstLayout) {
+        return switch (dstLayout) {
+            case VK_IMAGE_LAYOUT_UNDEFINED -> VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+            case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL -> VK_PIPELINE_STAGE_TRANSFER_BIT;
+            case VK_IMAGE_LAYOUT_GENERAL -> VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ->
+                    VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+            default -> VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        };
+    }
+
+    public void encodeImageTransition(VImage image, int src, int dst, int aspectMask, int mipLevels) {
         try (var stack = stackPush()) {
             var barrier = VkImageMemoryBarrier.calloc(1, stack);
-            barrier.get(0).sType$Default().srcAccessMask(srcStageToAccess(srcStage))
-                    .dstAccessMask(dstStageToAccess(dstStage)).oldLayout(src).newLayout(dst).image(image.image())
+            barrier.get(0).sType$Default().oldLayout(src).newLayout(dst).image(image.image())
                     .subresourceRange().aspectMask(aspectMask).baseMipLevel(0).levelCount(mipLevels).baseArrayLayer(0)
                     .layerCount(VK_REMAINING_ARRAY_LAYERS);
+
+            int srcStage = srcLayoutToStage(src);
+            int dstStage = dstLayoutToStage(dst);
+            barrier.srcAccessMask(layoutToAccess(src));
+            barrier.dstAccessMask(layoutToAccess(dst));
+
             vkCmdPipelineBarrier(this.buffer, srcStage, dstStage,
                     0, null, null, barrier);
         }
@@ -208,5 +218,9 @@ public class VCmdBuff extends TrackedResourceObject implements Pointer {
         vkFreeCommandBuffers(pool.device, pool.pool, buffer);
         transientResources.forEach(TrackedResourceObject::free);
         transientResources.clear();
+    }
+
+    public void setDebugUtilsObjectName(String name) {
+        Vulkanite.INSTANCE.getCtx().setDebugUtilsObjectName(buffer.address(), VK_OBJECT_TYPE_COMMAND_BUFFER, name);
     }
 }

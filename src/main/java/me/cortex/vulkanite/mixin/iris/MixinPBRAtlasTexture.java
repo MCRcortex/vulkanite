@@ -36,6 +36,7 @@ public abstract class MixinPBRAtlasTexture extends AbstractTexture implements IV
                 GL_RGBA8,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        img.setDebugUtilsObjectName("PBRAtlasTexture");
         setVGImage(img);
 
         Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {

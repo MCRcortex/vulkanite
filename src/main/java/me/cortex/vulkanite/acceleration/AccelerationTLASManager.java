@@ -49,6 +49,7 @@ public class AccelerationTLASManager {
         this.context = context;
         this.queue = queue;
         this.singleUsePool = context.cmd.createSingleUsePool();
+        this.singleUsePool.setDebugUtilsObjectName("TLAS singleUsePool");
         this.buildDataManager.resizeBindlessSet(0, null);
         this.entityBlasBuilder = new EntityBlasBuilder(context);
     }
@@ -212,6 +213,7 @@ public class AccelerationTLASManager {
             VBuffer scratchBuffer = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                     VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256, 0);
+            scratchBuffer.setDebugUtilsObjectName("TLAS Scratch Buffer");
 
             buildInfo.dstAccelerationStructure(tlas.structure)
                     .scratchData(VkDeviceOrHostAddressKHR.calloc(stack)
@@ -302,6 +304,7 @@ public class AccelerationTLASManager {
                             | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                     VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                     0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            data.setDebugUtilsObjectName("TLAS Instance Buffer");
             long ptr = data.map();
             if (addin != null) {
                 MemoryUtil.memCopy(addin.address(), ptr, VkAccelerationStructureInstanceKHR.SIZEOF);

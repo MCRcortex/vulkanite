@@ -1,5 +1,6 @@
 package me.cortex.vulkanite.lib.cmd;
 
+import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
@@ -17,7 +18,7 @@ import static org.lwjgl.vulkan.VK10.*;
 
 public class VCommandPool extends TrackedResourceObject {
     final VkDevice device;
-    final long pool;
+    public final long pool;
     public VCommandPool(VkDevice device, int flags) {
         this(device, 0, flags);
     }
@@ -81,5 +82,9 @@ public class VCommandPool extends TrackedResourceObject {
     public void free() {
         free0();
         vkDestroyCommandPool(device, pool, null);
+    }
+
+    public void setDebugUtilsObjectName(String name) {
+        Vulkanite.INSTANCE.getCtx().setDebugUtilsObjectName(pool, VK_OBJECT_TYPE_COMMAND_POOL, name);
     }
 }

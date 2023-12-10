@@ -1,5 +1,7 @@
 package me.cortex.vulkanite.lib.base;
 
+import me.cortex.vulkanite.client.Vulkanite;
+
 import java.lang.ref.Cleaner;
 
 public abstract class TrackedResourceObject {

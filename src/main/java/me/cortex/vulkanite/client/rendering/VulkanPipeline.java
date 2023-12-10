@@ -46,6 +46,7 @@ import static org.lwjgl.util.vma.Vma.VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIA
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
 public class VulkanPipeline {
     private final VContext ctx;
@@ -79,31 +80,32 @@ public class VulkanPipeline {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
         this.singleUsePool = ctx.cmd.createSingleUsePool();
+        this.singleUsePool.setDebugUtilsObjectName("VulkanPipeline singleUsePool");
 
         {
             this.customTextureViews = new SharedImageViewTracker[customTextures.length];
-            for(int i = 0; i < customTextures.length; i++) {
+            for (int i = 0; i < customTextures.length; i++) {
                 int index = i;
-                this.customTextureViews[i] = new SharedImageViewTracker(ctx, ()->customTextures[index]);
+                this.customTextureViews[i] = new SharedImageViewTracker(ctx, () -> customTextures[index]);
             }
 
             this.irisRenderTargetViews = new SharedImageViewTracker[maxIrisRenderTargets];
-            for(int i = 0; i < maxIrisRenderTargets; i++) {
+            for (int i = 0; i < maxIrisRenderTargets; i++) {
                 this.irisRenderTargetViews[i] = new SharedImageViewTracker(ctx, null);
             }
-            this.blockAtlasView = new SharedImageViewTracker(ctx, ()->{
+            this.blockAtlasView = new SharedImageViewTracker(ctx, () -> {
                 AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
-                return ((IVGImage)blockAtlas).getVGImage();
+                return ((IVGImage) blockAtlas).getVGImage();
             });
-            this.blockAtlasNormalView = new SharedImageViewTracker(ctx, ()->{
+            this.blockAtlasNormalView = new SharedImageViewTracker(ctx, () -> {
                 AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
                 PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
-                return ((IVGImage)holder.getNormalTexture()).getVGImage();
+                return ((IVGImage) holder.getNormalTexture()).getVGImage();
             });
-            this.blockAtlasSpecularView = new SharedImageViewTracker(ctx, ()->{
+            this.blockAtlasSpecularView = new SharedImageViewTracker(ctx, () -> {
                 AbstractTexture blockAtlas = MinecraftClient.getInstance().getTextureManager().getTexture(new Identifier("minecraft", "textures/atlas/blocks.png"));
                 PBRTextureHolder holder = PBRTextureManager.INSTANCE.getOrLoadHolder(blockAtlas.getGlId());//((TextureAtlasExtension)blockAtlas).getPBRHolder()
-                return ((IVGImage)holder.getSpecularTexture()).getVGImage();
+                return ((IVGImage) holder.getSpecularTexture()).getVGImage();
             });
             this.placeholderSpecular = ctx.memory.createImage2D(4, 4, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
             this.placeholderSpecularView = new VImageView(ctx, placeholderSpecular);
@@ -114,7 +116,7 @@ public class VulkanPipeline {
                 var initZeros = stack.callocInt(4 * 4);
                 var initNormals = stack.mallocFloat(4 * 4 * 4);
                 for (int i = 0; i < 4 * 4; i++) {
-                    initNormals.put(new float[] {0.5f, 0.5f, 1.0f, 1.0f});
+                    initNormals.put(new float[]{0.5f, 0.5f, 1.0f, 1.0f});
                 }
                 initNormals.rewind();
 
@@ -134,7 +136,7 @@ public class VulkanPipeline {
             }
         }
 
-        this.sampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_NEAREST)
+        this.sampler = new VSampler(ctx, a -> a.magFilter(VK_FILTER_NEAREST)
                 .minFilter(VK_FILTER_NEAREST)
                 .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
                 .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
@@ -145,7 +147,7 @@ public class VulkanPipeline {
                 .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
                 .maxAnisotropy(1.0f));
 
-        this.ctexSampler = new VSampler(ctx, a->a.magFilter(VK_FILTER_LINEAR)
+        this.ctexSampler = new VSampler(ctx, a -> a.magFilter(VK_FILTER_LINEAR)
                 .minFilter(VK_FILTER_LINEAR)
                 .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
                 .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
@@ -171,16 +173,16 @@ public class VulkanPipeline {
         supportsEntities = supportsEntitiesT;
         try {
             var commonSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
-                new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
-                new ShaderReflection.Binding("", 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, false),
-                new ShaderReflection.Binding("", 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
-                new ShaderReflection.Binding("", 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
-                new ShaderReflection.Binding("", 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
-                new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, false),
+                    new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 0, false),
+                    new ShaderReflection.Binding("", 1, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, false),
+                    new ShaderReflection.Binding("", 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                    new ShaderReflection.Binding("", 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                    new ShaderReflection.Binding("", 5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 0, false),
+                    new ShaderReflection.Binding("", 6, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, maxIrisRenderTargets, false),
             });
 
             var geomSetExpected = new ShaderReflection.Set(new ShaderReflection.Binding[]{
-               new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, true)
+                    new ShaderReflection.Binding("", 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, true)
             });
 
             ArrayList<ShaderReflection.Binding> customTexBindings = new ArrayList<>();
@@ -191,7 +193,7 @@ public class VulkanPipeline {
 
             ArrayList<ShaderReflection.Binding> ssboBindings = new ArrayList<>();
             for (int id : ssboIds) {
-                ssboBindings.add(new ShaderReflection.Binding("", id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, true));
+                ssboBindings.add(new ShaderReflection.Binding("", id, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 0, false));
             }
             var ssboSetExpected = new ShaderReflection.Set(ssboBindings);
 
@@ -272,6 +274,7 @@ public class VulkanPipeline {
                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                     0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+            uboBuffer.setDebugUtilsObjectName("VulkanPipeline UBO");
             long ptr = uboBuffer.map();
             MemoryUtil.memSet(ptr, 0, 1024);
             {

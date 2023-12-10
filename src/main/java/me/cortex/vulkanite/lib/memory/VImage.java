@@ -1,6 +1,11 @@
 package me.cortex.vulkanite.lib.memory;
 
+import me.cortex.vulkanite.client.Vulkanite;
+
 import java.lang.ref.Cleaner;
+
+import static org.lwjgl.vulkan.VK10.VK_OBJECT_TYPE_BUFFER;
+import static org.lwjgl.vulkan.VK10.VK_OBJECT_TYPE_IMAGE;
 
 public class VImage {
     protected VmaAllocator.ImageAllocation allocation;
@@ -39,5 +44,9 @@ public class VImage {
 
     public long image() {
         return allocation.image;
+    }
+
+    public void setDebugUtilsObjectName(String name) {
+        Vulkanite.INSTANCE.getCtx().setDebugUtilsObjectName(image(), VK_OBJECT_TYPE_IMAGE, name);
     }
 }

@@ -19,6 +19,7 @@ import java.util.List;
 
 import static org.lwjgl.vulkan.EXTDebugUtils.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.EXTDescriptorIndexing.VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
+import static org.lwjgl.vulkan.EXTMemoryBudget.VK_EXT_MEMORY_BUDGET_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHR16bitStorage.VK_KHR_16BIT_STORAGE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHR8bitStorage.VK_KHR_8BIT_STORAGE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
@@ -41,6 +42,7 @@ import static org.lwjgl.vulkan.KHRRayQuery.VK_KHR_RAY_QUERY_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRShaderDrawParameters.VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRSpirv14.VK_KHR_SPIRV_1_4_EXTENSION_NAME;
+import static org.lwjgl.vulkan.VK10.vkDeviceWaitIdle;
 
 public class Vulkanite {
     public static final boolean IS_WINDOWS = Util.getOperatingSystem() == Util.OperatingSystem.WINDOWS;
@@ -48,7 +50,7 @@ public class Vulkanite {
     public static boolean MEMORY_LEAK_TRACING = true;
 
     public static boolean IS_ENABLED = true;
-    public static final Vulkanite INSTANCE = new Vulkanite();
+    public static Vulkanite INSTANCE = new Vulkanite();
 
     private final VContext ctx;
     private final ArbitarySyncPointCallback fencedCallback = new ArbitarySyncPointCallback();
@@ -58,6 +60,8 @@ public class Vulkanite {
 
     public Vulkanite() {
         ctx = createVulkanContext();
+        // Hack: so that AccelerationManager can access Vulkanite.INSTANCE
+        INSTANCE = this;
 
         //Fill in the shared index buffer with a large count so we (hopefully) dont have to worry about it anymore
         // SharedQuadVkIndexBuffer.getIndexBuffer(ctx, 30000);
@@ -115,6 +119,7 @@ public class Vulkanite {
     }
 
     public void destroy() {
+        vkDeviceWaitIdle(ctx.device);
         for (var pool : descriptorPools.values()) {
             pool.free();
         }
@@ -149,6 +154,8 @@ public class Vulkanite {
                 VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
                 VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
 
+//                VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
+
                 VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
         ));
         if (IS_WINDOWS) {
@@ -175,6 +182,18 @@ public class Vulkanite {
 
                         stack-> VkPhysicalDeviceVulkan12Features.calloc(stack)
                                 .sType$Default()
+                ), List.of(
+                        features-> {},
+                        features -> {},
+                        features -> {
+                            var vulkan11Features = (VkPhysicalDeviceVulkan11Features) features;
+                            vulkan11Features.protectedMemory(false);
+                        },
+                        features -> {
+                            var vulkan12Features = (VkPhysicalDeviceVulkan12Features) features;
+                            vulkan12Features.bufferDeviceAddressMultiDevice(false);
+//                            vulkan12Features.bufferDeviceAddressCaptureReplay(false);
+                        }
                 ));
 
         return init.createContext();
