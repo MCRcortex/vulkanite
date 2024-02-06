@@ -1,9 +1,5 @@
 package me.cortex.vulkanite.lib.memory;
 
-import com.sun.jna.Pointer;
-import com.sun.jna.platform.linux.LibC;
-import com.sun.jna.platform.win32.Kernel32;
-import com.sun.jna.platform.win32.WinNT;
 import me.cortex.vulkanite.client.Vulkanite;
 
 import org.lwjgl.PointerBuffer;
@@ -13,7 +9,6 @@ import org.lwjgl.vulkan.*;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.HashMap;
-import java.util.function.Function;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_GL_ERROR_;
@@ -23,7 +18,6 @@ import static org.lwjgl.opengl.EXTMemoryObjectFD.GL_HANDLE_TYPE_OPAQUE_FD_EXT;
 import static org.lwjgl.opengl.EXTMemoryObjectFD.glImportMemoryFdEXT;
 import static org.lwjgl.opengl.EXTMemoryObjectWin32.glImportMemoryWin32HandleEXT;
 import static org.lwjgl.opengl.EXTMemoryObjectWin32.GL_HANDLE_TYPE_OPAQUE_WIN32_KMT_EXT;
-import static org.lwjgl.opengl.EXTSemaphoreWin32.GL_HANDLE_TYPE_OPAQUE_WIN32_EXT;
 import static org.lwjgl.opengl.GL11C.*;
 import static org.lwjgl.opengl.GL12.GL_TEXTURE_3D;
 import static org.lwjgl.opengl.GL12.GL_TEXTURE_WRAP_R;
@@ -35,7 +29,6 @@ import static org.lwjgl.vulkan.KHRExternalMemoryFd.vkGetMemoryFdKHR;
 import static org.lwjgl.vulkan.KHRExternalMemoryWin32.vkGetMemoryWin32HandleKHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
-import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
 import static org.lwjgl.vulkan.VK11.VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
 
 public class MemoryManager {
@@ -133,19 +126,6 @@ public class MemoryManager {
                 if (tracked.refCount == 1) {
                     glDeleteMemoryObjectsEXT(tracked.desc.glMemoryObj);
                     _CHECK_GL_ERROR_();
-                    if (Vulkanite.IS_WINDOWS) {
-                        // if (!Kernel32.INSTANCE.CloseHandle(new WinNT.HANDLE(new Pointer(tracked.desc.handle)))) {
-                        //     int error = Kernel32.INSTANCE.GetLastError();
-                        //     System.err.println("STATE MIGHT BE BROKEN! Failed to close handle: " + error);
-                        //     throw new IllegalStateException();
-                        // }
-                    } else {
-                        int code = 0;
-                        if ((code = LibC.INSTANCE.close((int) tracked.desc.handle)) != 0) {
-                            System.err.println("STATE MIGHT BE BROKEN! Failed to close FD: " + code);
-                            throw new IllegalStateException();
-                        }
-                    }
                     MEMORY_TO_HANDLES.remove(memory);
                 } else {
                     MEMORY_TO_HANDLES.put(memory, new HandleDescriptorTracked(tracked.desc, tracked.refCount - 1));
