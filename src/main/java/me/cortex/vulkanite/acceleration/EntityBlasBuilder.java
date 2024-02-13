@@ -161,6 +161,7 @@ public class EntityBlasBuilder {
                 .srcAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)
                 .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR), null, null);
 
+        cmd.addAccelerationStructureRef(structure);
         cmd.addBufferRef(scratch);
         return structure;
     }

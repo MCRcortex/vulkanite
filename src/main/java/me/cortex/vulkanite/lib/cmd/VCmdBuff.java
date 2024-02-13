@@ -5,6 +5,7 @@ import me.cortex.vulkanite.lib.base.VObject;
 import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSet;
 import me.cortex.vulkanite.lib.memory.MemoryManager;
+import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.memory.VImage;
 
@@ -47,6 +48,9 @@ public class VCmdBuff extends VObject {
     }
     public void addVGSemaphoreRef(final VRef<VGSemaphore> semaphore) {
         refs.add(semaphore.addRefGeneric());
+    }
+    public void addAccelerationStructureRef(final VRef<VAccelerationStructure> accelerationStructure) {
+        refs.add(accelerationStructure.addRefGeneric());
     }
 
     protected VCmdBuff(VCommandPool pool, VkCommandBuffer buff, int flags) {

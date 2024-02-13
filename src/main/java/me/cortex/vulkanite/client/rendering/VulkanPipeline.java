@@ -240,8 +240,6 @@ public class VulkanPipeline {
     public void renderPostShadows(List<VRef<VGImage>> vgOutImgs, Camera camera, ShaderStorageBuffer[] ssbos, MixinCelestialUniforms celestialUniforms) {
         ctx.cmd.newFrame();
 
-//        System.gc();
-
         buildEntities();
 
         PBRTextureManager.notifyPBRTexturesChanged();
@@ -412,7 +410,7 @@ public class VulkanPipeline {
                 }
             }
 
-            ctx.cmd.submit(0, cmdRef, Arrays.asList(new VRef<>(in.get())), new int[]{VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}, Arrays.asList(new VRef<>(out.get())), null);
+            ctx.cmd.submit(0, cmdRef, Arrays.asList(new VRef<>(in.get())), Arrays.asList(new VRef<>(out.get())), null);
         }
 
         out.get().glWait(new int[0], outImgsGlIds, outImgsGlLayouts);

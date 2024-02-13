@@ -12,6 +12,7 @@ import me.cortex.vulkanite.lib.other.sync.VFence;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import org.lwjgl.vulkan.*;
 
+import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,8 +35,6 @@ public class CommandManager {
                     return pool;
                 }
             };
-
-    private static final int[] waitAll = {VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT};
 
     public CommandManager(VkDevice device, int queues) {
         this.device = device;
@@ -103,14 +102,14 @@ public class CommandManager {
     }
 
     public long submit(int queueId, final VRef<VCmdBuff> cmdBuff) {
-        return submit(queueId, cmdBuff, null, waitAll, null, null);
+        return submit(queueId, cmdBuff, null, null, null);
     }
 
-    public long submit(int queueId, final VRef<VCmdBuff> cmdBuff, List<VRef<VSemaphore>> waits, int[] waitStages, List<VRef<VSemaphore>> triggers, VFence fence) {
+    public long submit(int queueId, final VRef<VCmdBuff> cmdBuff, List<VRef<VSemaphore>> waits, List<VRef<VSemaphore>> triggers, VFence fence) {
         if (queueId == 0) {
             RenderSystem.assertOnRenderThread();
         }
-        return queues[queueId].submit(cmdBuff, queues, waits, waitStages, triggers, fence);
+        return queues[queueId].submit(cmdBuff, queues, waits, triggers, fence);
     }
 
     public void waitQueueIdle(int queue) {
@@ -191,7 +190,7 @@ public class CommandManager {
             }
         }
 
-        public long submit(final VRef<VCmdBuff> cmdBuff, Queue[] queues, List<VRef<VSemaphore>> waits, int[] waitStages, List<VRef<VSemaphore>> triggers, VFence fence) {
+        public long submit(final VRef<VCmdBuff> cmdBuff, Queue[] queues, List<VRef<VSemaphore>> waits, List<VRef<VSemaphore>> triggers, VFence fence) {
             long t = timeline.getAndIncrement();
 
             synchronized (this) {
@@ -206,11 +205,13 @@ public class CommandManager {
                     LongBuffer signalSemaphores = stack.mallocLong(triggerCount);
                     LongBuffer waitTimelineValues = stack.mallocLong(waitCount);
                     LongBuffer signalTimelineValues = stack.mallocLong(triggerCount);
+                    IntBuffer waitStages = stack.mallocInt(waitCount);
                     // Traditional binary semaphores
                     if (waits != null) {
                         for (var wait : waits) {
                             waitSemaphores.put(wait.get().address());
                             waitTimelineValues.put(0);
+                            waitStages.put(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
                             cmdBuff.get().addSemaphoreRef(wait);
                         }
                     }
@@ -226,6 +227,7 @@ public class CommandManager {
                         var sema = queues[entry.getKey()].timelineSema;
                         waitSemaphores.put(sema.get().address());
                         waitTimelineValues.put(entry.getValue());
+                        waitStages.put(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
                         cmdBuff.get().addSemaphoreRef(sema);
                     }
                     signalSemaphores.put(timelineSema.get().address());
@@ -236,6 +238,7 @@ public class CommandManager {
                     signalSemaphores.rewind();
                     waitTimelineValues.rewind();
                     signalTimelineValues.rewind();
+                    waitStages.rewind();
 
                     var timelineSubmitInfo = VkTimelineSemaphoreSubmitInfo.calloc(stack)
                             .sType$Default()
@@ -248,7 +251,7 @@ public class CommandManager {
                             .pCommandBuffers(stack.pointers(cmdBuff.get().seal()))
                             .pWaitSemaphores(waitSemaphores)
                             .waitSemaphoreCount(waitCount)
-                            .pWaitDstStageMask(stack.ints(waitStages))
+                            .pWaitDstStageMask(waitStages)
                             .pSignalSemaphores(signalSemaphores)
                             .pNext(timelineSubmitInfo.address());
                     _CHECK_(vkQueueSubmit(queue, submit, fence == null ? 0 : fence.address()));
