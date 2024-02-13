@@ -14,7 +14,6 @@ import me.cortex.vulkanite.lib.other.sync.VGSemaphore;
 import me.cortex.vulkanite.lib.other.sync.VSemaphore;
 import me.cortex.vulkanite.lib.pipeline.VComputePipeline;
 import me.cortex.vulkanite.lib.pipeline.VRaytracePipeline;
-import org.lwjgl.system.Pointer;
 import org.lwjgl.vulkan.*;
 import org.lwjgl.system.MemoryUtil;
 
@@ -34,7 +33,7 @@ public class VCmdBuff extends VObject {
     private final VCommandPool pool;
     private VkCommandBuffer buffer;
 
-    private final List<VRef<VQueryPool>> queryPoolRefs = new ArrayList<>();
+    @SuppressWarnings("FieldCanBeLocal")
     private final List<VRef<VObject>> refs = new ArrayList<>();
 
     public void addBufferRef(final VRef<VBuffer> buffer) {
@@ -138,7 +137,7 @@ public class VCmdBuff extends VObject {
 
     public void resetQueryPool(final VRef<VQueryPool> queryPool, int first, int size) {
         vkCmdResetQueryPool(buffer, queryPool.get().pool, first, size);
-        queryPoolRefs.add(queryPool.addRef());
+        refs.add(queryPool.addRefGeneric());
     }
 
     public void encodeDataUpload(MemoryManager manager, long src, final VRef<VBuffer> dest, long destOffset, long size) {

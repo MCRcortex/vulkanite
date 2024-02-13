@@ -55,7 +55,7 @@ public class VulkanPipeline {
     private final AccelerationManager accelerationManager;
 
     private record RtPipeline(VRef<VRaytracePipeline> pipeline, int commonSet, int geomSet, int customTexSet, int ssboSet) {}
-    private ArrayList<RtPipeline> raytracePipelines = new ArrayList<>();
+    private final ArrayList<RtPipeline> raytracePipelines = new ArrayList<>();
 
     private final VRef<VSampler> sampler;
     private final VRef<VSampler> ctexSampler;
@@ -70,8 +70,6 @@ public class VulkanPipeline {
     private final VRef<VImageView> placeholderSpecularView;
     private final VRef<VImage> placeholderNormals;
     private final VRef<VImageView> placeholderNormalsView;
-
-    private int fidx;
 
     private final int maxIrisRenderTargets = 16;
 
@@ -228,9 +226,6 @@ public class VulkanPipeline {
             throw new RuntimeException(e);
         }
     }
-
-    private VSemaphore previousSemaphore;
-
 
     private final EntityCapture capture = new EntityCapture();
     private void buildEntities() {
