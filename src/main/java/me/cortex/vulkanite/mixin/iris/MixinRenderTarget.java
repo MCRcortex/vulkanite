@@ -2,6 +2,7 @@ package me.cortex.vulkanite.mixin.iris;
 
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IRenderTargetVkGetter;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.other.FormatConverter;
 import net.coderbot.iris.gl.texture.InternalTextureFormat;
@@ -24,8 +25,8 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
 
     @Shadow protected abstract void setupTexture(int i, int i1, int i2, boolean b);
 
-    @Unique private VGImage vgMainTexture;
-    @Unique private VGImage vgAltTexture;
+    @Unique private VRef<VGImage> vgMainTexture;
+    @Unique private VRef<VGImage> vgAltTexture;
 
     @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/GlStateManager;_genTextures([I)V"))
     private void redirectGen(int[] textures) {
@@ -45,21 +46,17 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
 
     @Overwrite
     public int getMainTexture() {
-        return vgMainTexture.glId;
+        return vgMainTexture.get().glId;
     }
 
     @Overwrite
     public int getAltTexture() {
-        return vgAltTexture.glId;
+        return vgAltTexture.get().glId;
     }
 
     @Overwrite
     public void resize(int width, int height) {
         glFinish();
-        //TODO: block the gpu fully before deleting and resizing the textures
-        vgMainTexture.free();
-        vgAltTexture.free();
-
         setupTextures(width, height, !internalFormat.getPixelFormat().isInteger());
     }
 
@@ -73,11 +70,11 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
 
         vgMainTexture = ctx.memory.createSharedImage(width, height, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         vgAltTexture = ctx.memory.createSharedImage(width, height, 1, vkfmt, glfmt, VK_IMAGE_USAGE_STORAGE_BIT , VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        vgMainTexture.setDebugUtilsObjectName("RenderTarget Main");
-        vgAltTexture.setDebugUtilsObjectName("RenderTarget Alt");
+        vgMainTexture.get().setDebugUtilsObjectName("RenderTarget Main");
+        vgAltTexture.get().setDebugUtilsObjectName("RenderTarget Alt");
         Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {
-            cmdbuf.encodeImageTransition(vgMainTexture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
-            cmdbuf.encodeImageTransition(vgAltTexture, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+            cmdbuf.encodeImageTransition(new VRef<>(vgMainTexture.get()), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+            cmdbuf.encodeImageTransition(new VRef<>(vgAltTexture.get()), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
         });
 
         setupTexture(getMainTexture(), width, height, allowsLinear);
@@ -88,15 +85,15 @@ public abstract class MixinRenderTarget implements IRenderTargetVkGetter {
     private void redirectResize(int[] textures) {
         glFinish();
         //TODO: block the gpu fully before deleting and resizing the textures
-        vgMainTexture.free();
-        vgAltTexture.free();
+        vgMainTexture = null;
+        vgAltTexture = null;
     }
 
-    public VGImage getMain() {
-        return vgMainTexture;
+    public VRef<VGImage> getMain() {
+        return vgMainTexture.addRef();
     }
 
-    public VGImage getAlt() {
-        return vgAltTexture;
+    public VRef<VGImage> getAlt() {
+        return vgAltTexture.addRef();
     }
 }

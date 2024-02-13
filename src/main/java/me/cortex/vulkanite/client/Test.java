@@ -116,21 +116,21 @@ public class Test {
         var context = init.createContext();
 
         context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
-        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
-        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
-        context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
-        context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
-        context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT).free();
-        context.memory.createAcceleration(100*256,256, 0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR).free();
+        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.memory.createSharedBuffer(1000, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.memory.createSharedImage(128,128, 1, VK_FORMAT_R8G8B8A8_UNORM, GL_RGBA8, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        context.memory.createAcceleration(100*256,256, 0, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
         var pool = context.cmd.createSingleUsePool();
-        pool.createCommandBuffer();
+        pool.get().createCommandBuffer();
 
         var mem = context.memory.createBuffer(1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                         0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-        mem.map();
-        mem.unmap();
-        mem.flush();
+        mem.get().map();
+        mem.get().unmap();
+        mem.get().flush();
         System.gc();
 
         // SharedQuadVkIndexBuffer.getIndexBuffer(context, uploadCmd, 10000);
@@ -197,13 +197,12 @@ public class Test {
         var rchs = VShader.compileLoad(context, Files.readString(new File("run/raychit.glsl").toPath()), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
         var pipeline = new RaytracePipelineBuilder()
                 .addLayout(layout)
-                .setRayGen(rgs.named())
-                .addMiss(rms.named())
-                .addHit(rchs.named(), null, null)
+                .setRayGen(rgs.get().named())
+                .addMiss(rms.get().named())
+                .addHit(rchs.get().named(), null, null)
                 .build(context, 1);
 
-        context.sync.createSharedBinarySemaphore()
-                .free();
+        context.sync.createSharedBinarySemaphore();
 
 
         var cl = new DescriptorSetLayoutBuilder()
@@ -212,7 +211,7 @@ public class Test {
 
         var compute = VShader.compileLoad(context, Files.readString(new File("run/compute.glsl").toPath()), VK_SHADER_STAGE_COMPUTE_BIT);
         var comppipe = new ComputePipelineBuilder()
-                .set(compute.named())
+                .set(compute.get().named())
                 .addLayout(cl)
                 .build(context);
 

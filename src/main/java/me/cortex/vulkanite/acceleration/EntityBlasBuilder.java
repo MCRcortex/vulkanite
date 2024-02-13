@@ -2,11 +2,11 @@ package me.cortex.vulkanite.acceleration;
 
 import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VUtil;
-import me.cortex.vulkanite.lib.other.sync.VFence;
 import net.coderbot.iris.vertices.IrisVertexFormats;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BufferBuilder;
@@ -35,7 +35,7 @@ public class EntityBlasBuilder {
     }
 
     private record BuildInfo(VertexFormat format, int quadCount, long address) {}
-    Pair<VAccelerationStructure, VBuffer> buildBlas(List<Pair<RenderLayer, BufferBuilder.BuiltBuffer>> renders, VCmdBuff cmd, VFence fence) {
+    Pair<VRef<VAccelerationStructure>, VRef<VBuffer>> buildBlas(List<Pair<RenderLayer, BufferBuilder.BuiltBuffer>> renders, VCmdBuff cmd) {
         long combined_size = 0;
         TextureManager textureManager = MinecraftClient.getInstance().getTextureManager();
         for (var type : renders) {
@@ -57,25 +57,25 @@ public class EntityBlasBuilder {
 
         //TODO: PUT THE BINDLESS TEXTURE REFERENCE AT THE START OF THE render layers geometry buffer
         var geometryBuffer = ctx.memory.createBuffer(combined_size, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, 0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-        long ptr = geometryBuffer.map();
+        long ptr = geometryBuffer.get().map();
         long offset = 0;
         List<BuildInfo> infos = new ArrayList<>();
         for (var pair : renders) {
             offset = VUtil.alignUp(offset, 128);
             MemoryUtil.memCopy(MemoryUtil.memAddress(pair.getRight().getVertexBuffer()), ptr + offset, pair.getRight().getVertexBuffer().remaining());
-            infos.add(new BuildInfo(pair.getRight().getParameters().format(), pair.getRight().getParameters().indexCount()/6, geometryBuffer.deviceAddress() + offset));
+            infos.add(new BuildInfo(pair.getRight().getParameters().format(), pair.getRight().getParameters().indexCount()/6, geometryBuffer.get().deviceAddress() + offset));
 
 
             offset += pair.getRight().getVertexBuffer().remaining();
         }
-        geometryBuffer.unmap();
+        geometryBuffer.get().unmap();
 
-        VAccelerationStructure blas = null;
+        VRef<VAccelerationStructure> blas = null;
         try (var stack = MemoryStack.stackPush()) {
             int[] primitiveCounts = new int[infos.size()];
             var buildInfo = populateBuildStructs(ctx, stack, cmd, infos, primitiveCounts);
 
-            blas = executeBlasBuild(ctx, cmd, fence, stack, buildInfo, primitiveCounts);
+            blas = executeBlasBuild(ctx, cmd, stack, buildInfo, primitiveCounts);
         }
 
 
@@ -115,7 +115,7 @@ public class EntityBlasBuilder {
         return geometryInfos;
     }
 
-    private static VAccelerationStructure executeBlasBuild(VContext ctx, VCmdBuff cmd, VFence cleanupFence, MemoryStack stack, VkAccelerationStructureGeometryKHR.Buffer geometryInfos, int[] prims) {
+    private static VRef<VAccelerationStructure> executeBlasBuild(VContext ctx, VCmdBuff cmd, MemoryStack stack, VkAccelerationStructureGeometryKHR.Buffer geometryInfos, int[] prims) {
         var buildInfos = VkAccelerationStructureBuildGeometryInfoKHR.calloc(1, stack);
         var buildRanges = VkAccelerationStructureBuildRangeInfoKHR.calloc(prims.length, stack);
         for (int primCount : prims) {
@@ -148,20 +148,20 @@ public class EntityBlasBuilder {
                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256, 0);
 
-        bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.deviceAddress()));
-        bi.dstAccelerationStructure(structure.structure);
+        bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.get().deviceAddress()));
+        bi.dstAccelerationStructure(structure.get().structure);
 
         buildInfos.rewind();
         buildRanges.rewind();
 
-        vkCmdBuildAccelerationStructuresKHR(cmd.buffer, buildInfos, stack.pointers(buildRanges));
+        vkCmdBuildAccelerationStructuresKHR(cmd.buffer(), buildInfos, stack.pointers(buildRanges));
 
-        vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1)
+        vkCmdPipelineBarrier(cmd.buffer(), VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1)
                 .sType$Default()
                 .srcAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)
                 .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR), null, null);
 
-        ctx.sync.addCallback(cleanupFence, scratch::free);
+        cmd.addBufferRef(scratch);
         return structure;
     }
 }

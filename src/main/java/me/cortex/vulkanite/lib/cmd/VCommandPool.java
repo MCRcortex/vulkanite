@@ -1,7 +1,8 @@
 package me.cortex.vulkanite.lib.cmd;
 
 import me.cortex.vulkanite.client.Vulkanite;
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+import me.cortex.vulkanite.lib.base.VRef;
+import me.cortex.vulkanite.lib.base.VObject;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -10,13 +11,14 @@ import org.lwjgl.vulkan.VkCommandPoolCreateInfo;
 import org.lwjgl.vulkan.VkDevice;
 
 import java.nio.LongBuffer;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.ArrayList;
+import java.util.List;
 
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VCommandPool extends TrackedResourceObject {
+public class VCommandPool extends VObject {
     final VkDevice device;
     public final long pool;
     public VCommandPool(VkDevice device, int flags) {
@@ -36,15 +38,15 @@ public class VCommandPool extends TrackedResourceObject {
         }
     }
 
-    public synchronized VCmdBuff createCommandBuffer() {
-        return createCommandBuffers(1)[0];
+    public synchronized VRef<VCmdBuff> createCommandBuffer() {
+        return createCommandBuffers(1).get(0);
     }
 
-    public synchronized VCmdBuff[] createCommandBuffers(int count) {
-        return createCommandBuffers(count, 0);
+    public synchronized List<VRef<VCmdBuff>> createCommandBuffers(int count) {
+        return createCommandBuffers(count, 0, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     }
 
-    public synchronized VCmdBuff[] createCommandBuffers(int count, int level) {
+    public synchronized List<VRef<VCmdBuff>> createCommandBuffers(int count, int level, int flags) {
         try (MemoryStack stack = MemoryStack.stackPush()){
             PointerBuffer pCommandBuffer = stack.mallocPointer(count);
             _CHECK_(vkAllocateCommandBuffers(device,
@@ -55,32 +57,16 @@ public class VCommandPool extends TrackedResourceObject {
                                     .level(level)
                                     .commandBufferCount(count), pCommandBuffer),
                     "Failed to create command buffer");
-            VCmdBuff[] buffers = new VCmdBuff[count];
+            List<VRef<VCmdBuff>> buffers = new ArrayList<>();
             for (int i = 0; i < count; i++) {
-                buffers[i] = new VCmdBuff(this, new VkCommandBuffer(pCommandBuffer.get(i), device));
+                buffers.add(new VRef<>(new VCmdBuff(this, new VkCommandBuffer(pCommandBuffer.get(i), device), flags)));
             }
             return buffers;
         }
     }
 
-    private final ConcurrentLinkedDeque<VCmdBuff> toRelease = new ConcurrentLinkedDeque<>();
-    void free(VCmdBuff cmdBuff) {
-        toRelease.add(cmdBuff);
-    }
-
-    public void doReleases() {
-        while (!toRelease.isEmpty()) {
-            toRelease.poll().freeInternal();
-        }
-    }
-
-    public void releaseNow(VCmdBuff cmd) {
-        cmd.freeInternal();
-    }
-
     @Override
     public void free() {
-        free0();
         vkDestroyCommandPool(device, pool, null);
     }
 

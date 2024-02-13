@@ -13,7 +13,7 @@ public class MixinGLRenderDevice {
     @Inject(method = "deleteBuffer", at = @At("HEAD"), cancellable = true)
     private void redirectDelete(GlBuffer buffer, CallbackInfo ci) {
         if (buffer instanceof IVGBuffer vkBuffer && vkBuffer.getBuffer() != null) {
-            Vulkanite.INSTANCE.addSyncedCallback(vkBuffer.getBuffer()::free);
+            vkBuffer.setBuffer(null);
             ci.cancel();
         }
     }

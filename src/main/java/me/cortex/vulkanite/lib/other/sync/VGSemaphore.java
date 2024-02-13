@@ -1,5 +1,7 @@
 package me.cortex.vulkanite.lib.other.sync;
 
+import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.memory.HandleDescriptorManger;
 import me.cortex.vulkanite.lib.memory.MemoryManager;
 import org.lwjgl.vulkan.VkDevice;
@@ -10,16 +12,23 @@ public class VGSemaphore extends VSemaphore {
     public final int glSemaphore;
     private final long handleDescriptor;
 
-    public VGSemaphore(VkDevice device, long semaphore, int glSemaphore, long handleDescriptor) {
+    protected VGSemaphore(VkDevice device, long semaphore, int glSemaphore, long handleDescriptor) {
         super(device, semaphore);
         this.glSemaphore = glSemaphore;
         this.handleDescriptor = handleDescriptor;
     }
 
+    public static VRef<VGSemaphore> create(VkDevice device, long semaphore, int glSemaphore, long handleDescriptor) {
+        return new VRef<>(new VGSemaphore(device, semaphore, glSemaphore, handleDescriptor));
+    }
+
     @Override
-    public void free() {
+    protected void free() {
         HandleDescriptorManger.close(handleDescriptor);
-        glDeleteSemaphoresEXT(glSemaphore);
+        int glSemaphore = this.glSemaphore;
+        Vulkanite.INSTANCE.addSyncedCallback(() -> {
+            glDeleteSemaphoresEXT(glSemaphore);
+        });
         super.free();
     }
 

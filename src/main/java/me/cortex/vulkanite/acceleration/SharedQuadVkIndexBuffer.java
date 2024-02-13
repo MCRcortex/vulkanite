@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.acceleration;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import org.lwjgl.system.MemoryUtil;
@@ -15,8 +16,7 @@ import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
 public class SharedQuadVkIndexBuffer {
     public static final int TYPE = VK_INDEX_TYPE_UINT32;
-    private static VBuffer indexBuffer = null;
-    private static VkDeviceOrHostAddressConstKHR indexBufferAddr = null;
+    private static VRef<VBuffer> indexBuffer = null;
     private static int currentQuadCount = 0;
 
     public synchronized static VkDeviceOrHostAddressConstKHR getIndexBuffer(VContext context, VCmdBuff uploaCmdBuff, int quadCount) {
@@ -24,16 +24,10 @@ public class SharedQuadVkIndexBuffer {
             makeNewIndexBuffer(context, uploaCmdBuff, quadCount);
         }
 
-        return indexBufferAddr;
+        return indexBuffer.get().deviceAddressConst();
     }
 
     private static void makeNewIndexBuffer(VContext context, VCmdBuff uploaCmdBuff, int quadCount) {
-        if (indexBuffer != null) {
-            //TODO: need to enqueue the old indexBuffer for memory release
-            indexBufferAddr.free();//Note this is calloced (in global heap) so need to release it IS SEPERATE FROM indexBuffer
-            throw new IllegalStateException();
-        }
-
         ByteBuffer buffer = genQuadIdxs(quadCount);
         //TODO: dont harcode VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR and VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
         indexBuffer = context.memory.createBuffer(buffer.remaining(),
@@ -41,12 +35,11 @@ public class SharedQuadVkIndexBuffer {
                         | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
                         | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                 VK_MEMORY_HEAP_DEVICE_LOCAL_BIT);
-        indexBuffer.setDebugUtilsObjectName("Geometry Index Buffer");
+        indexBuffer.get().setDebugUtilsObjectName("Geometry Index Buffer");
 
         uploaCmdBuff.encodeDataUpload(context.memory, MemoryUtil.memAddress(buffer), indexBuffer, 0,
                 buffer.remaining());
 
-        indexBufferAddr = VkDeviceOrHostAddressConstKHR.calloc().deviceAddress(indexBuffer.deviceAddress());
         currentQuadCount = quadCount;
     }
 

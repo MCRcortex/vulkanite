@@ -18,20 +18,14 @@ public class RaytracingShaderSet {
     private final ShaderModule[] raymiss;
     private final RayHit[] rayhits;
 
-    private final VShader[] allShader;
-
     public RaytracingShaderSet(VContext ctx, RaytracingShaderSource source) {
-        List<VShader> shaderList = new ArrayList<>();
-
-        VShader shader = VShader.compileLoad(ctx, source.raygen, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
-        shaderList.add(shader);
-        this.raygen = shader.named();
+        var shader = VShader.compileLoad(ctx, source.raygen, VK_SHADER_STAGE_RAYGEN_BIT_KHR);
+        this.raygen = shader.get().named();
 
         this.raymiss = new ShaderModule[source.raymiss.length];
         for (int i = 0; i < raymiss.length; i++) {
             shader = VShader.compileLoad(ctx, source.raymiss[i], VK_SHADER_STAGE_MISS_BIT_KHR);
-            shaderList.add(shader);
-            this.raymiss[i] = shader.named();
+            this.raymiss[i] = shader.get().named();
         }
 
         this.rayhits = new RayHit[source.rayhit.length];
@@ -41,27 +35,23 @@ public class RaytracingShaderSet {
             ShaderModule close = null;
             if (hit.close() != null) {
                 shader = VShader.compileLoad(ctx, hit.close(), VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR);
-                shaderList.add(shader);
-                close = shader.named();
+                close = shader.get().named();
             }
 
             ShaderModule any = null;
             if (hit.any() != null) {
                 shader = VShader.compileLoad(ctx, hit.any(), VK_SHADER_STAGE_ANY_HIT_BIT_KHR);
-                shaderList.add(shader);
-                any = shader.named();
+                any = shader.get().named();
             }
 
             ShaderModule intersection = null;
             if (hit.intersection() != null) {
                 shader = VShader.compileLoad(ctx, hit.intersection(), VK_SHADER_STAGE_INTERSECTION_BIT_KHR);
-                shaderList.add(shader);
-                intersection = shader.named();
+                intersection = shader.get().named();
             }
 
             this.rayhits[i] = new RayHit(close, any, intersection);
         }
-        this.allShader = shaderList.toArray(new VShader[0]);
     }
 
     public void apply(RaytracePipelineBuilder builder) {
@@ -76,11 +66,5 @@ public class RaytracingShaderSet {
 
     public int getRayHitCount() {
         return rayhits.length;
-    }
-
-    public void delete() {
-        for (var shader : allShader) {
-            shader.free();
-        }
     }
 }

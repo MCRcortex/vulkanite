@@ -6,6 +6,7 @@ import com.sun.jna.platform.win32.Kernel32;
 import com.sun.jna.platform.win32.WinNT;
 import me.cortex.vulkanite.client.Vulkanite;
 
+import me.cortex.vulkanite.lib.base.VRef;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.util.vma.VmaAllocationCreateInfo;
 import org.lwjgl.vulkan.*;
@@ -154,7 +155,7 @@ public class MemoryManager {
         }
     };
 
-    public VGBuffer createSharedBuffer(long size, int usage, int properties) {
+    public VRef<VGBuffer> createSharedBuffer(long size, int usage, int properties) {
         try (var stack = stackPush()) {
             var bufferCreateInfo = VkBufferCreateInfo
                             .calloc(stack)
@@ -175,14 +176,14 @@ public class MemoryManager {
             int glId = glCreateBuffers();
             glNamedBufferStorageMemEXT(glId, size, memoryObject, alloc.ai.offset());
             _CHECK_GL_ERROR_();
-            return new VGBuffer(alloc, glId);
+            return VGBuffer.create(alloc, glId);
         }
     }
 
-    public VGImage createSharedImage(int width, int height, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
+    public VRef<VGImage> createSharedImage(int width, int height, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
         return createSharedImage(2, width, height, 1, mipLevels, vkFormat, glFormat, usage, properties);
     }
-    public VGImage createSharedImage(int dimensions, int width, int height, int depth, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
+    public VRef<VGImage> createSharedImage(int dimensions, int width, int height, int depth, int mipLevels, int vkFormat, int glFormat, int usage, int properties) {
 
         int vkImageType = VK_IMAGE_TYPE_2D;
         int glImageType = GL_TEXTURE_2D;
@@ -247,15 +248,15 @@ public class MemoryManager {
             }
 
             _CHECK_GL_ERROR_();
-            return new VGImage(alloc, width, height, depth, mipLevels, vkFormat, glFormat, glId);
+            return VGImage.create(alloc, width, height, depth, mipLevels, vkFormat, glFormat, glId);
         }
     }
 
-    public VBuffer createBuffer(long size, int usage, int properties) {
+    public VRef<VBuffer> createBuffer(long size, int usage, int properties) {
         return createBuffer(size, usage, properties, 0L, 0);
     }
 
-    public VBuffer createBuffer(long size, int usage, int properties, long alignment, int vmaFlags) {
+    public VRef<VBuffer> createBuffer(long size, int usage, int properties, long alignment, int vmaFlags) {
         try (var stack = stackPush()) {
             var alloc = allocator.alloc(0, VkBufferCreateInfo
                             .calloc(stack)
@@ -266,11 +267,11 @@ public class MemoryManager {
                             .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(properties),
                     alignment);
-            return new VBuffer(alloc);
+            return VBuffer.create(alloc);
         }
     }
 
-    public VImage createImage2D(int width, int height, int mipLevels, int vkFormat, int usage, int properties) {
+    public VRef<VImage> createImage2D(int width, int height, int mipLevels, int vkFormat, int usage, int properties) {
         try (var stack = stackPush()) {
             var alloc = allocator.alloc(0, VkImageCreateInfo
                 .calloc(stack)
@@ -287,11 +288,11 @@ public class MemoryManager {
                     VmaAllocationCreateInfo.calloc(stack)
                             .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
-            return new VImage(alloc, width, height, 1, mipLevels, vkFormat);
+            return VImage.create(alloc, width, height, 1, mipLevels, vkFormat);
         }
     }
 
-    public VAccelerationStructure createAcceleration(long size, int alignment, int usage, int type) {
+    public VRef<VAccelerationStructure> createAcceleration(long size, int alignment, int usage, int type) {
         var buffer = createBuffer(size, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, alignment, 0);
         try (var stack = stackPush()) {
             LongBuffer pAccelerationStructure = stack.mallocLong(1);
@@ -300,9 +301,9 @@ public class MemoryManager {
                             .sType$Default()
                             .type(type)
                             .size(size)
-                            .buffer(buffer.buffer()), null, pAccelerationStructure),
+                            .buffer(buffer.get().buffer()), null, pAccelerationStructure),
                     "Failed to create acceleration acceleration structure");
-            return new VAccelerationStructure(device, pAccelerationStructure.get(0), buffer);
+            return VAccelerationStructure.create(device, pAccelerationStructure.get(0), buffer);
         }
     }
 

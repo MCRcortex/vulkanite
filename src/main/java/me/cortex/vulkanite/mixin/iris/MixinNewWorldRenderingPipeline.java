@@ -6,6 +6,7 @@ import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.compat.*;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
 import net.coderbot.iris.gl.texture.TextureAccess;
@@ -46,7 +47,7 @@ public class MixinNewWorldRenderingPipeline {
     @Unique private VulkanPipeline pipeline;
 
     @Unique
-    private VGImage[] getCustomTextures() {
+    private List<VRef<VGImage>> getCustomTextures() {
         Object2ObjectMap<String, TextureAccess> texturesBinary = customTextureManager.getIrisCustomTextures();
         Object2ObjectMap<String, TextureAccess> texturesPNGs = customTextureManager.getCustomTextureIdMap(TextureStage.GBUFFERS_AND_SHADOW);
 
@@ -58,7 +59,7 @@ public class MixinNewWorldRenderingPipeline {
 
         return entryList.stream()
                 .map(entry -> ((IVGImage) entry.getValue()).getVGImage())
-                .toArray(VGImage[]::new);
+                .toList();
     }
 
     @Inject(method = "<init>", at = @At("TAIL"))
@@ -83,7 +84,7 @@ public class MixinNewWorldRenderingPipeline {
             buffers = ((ShaderStorageBufferHolderAccessor)shaderStorageBufferHolder).getBuffers();
         }
 
-        List<VGImage> outImgs = new ArrayList<>();
+        List<VRef<VGImage>> outImgs = new ArrayList<>();
         for (int i = 0; i < renderTargets.getRenderTargetCount(); i++) {
             outImgs.add(((IRenderTargetVkGetter)renderTargets.getOrCreate(i)).getMain());
         }
@@ -95,12 +96,9 @@ public class MixinNewWorldRenderingPipeline {
 
     @Inject(method = "destroyShaders", at = @At("TAIL"))
     private void destory(CallbackInfo ci) {
+        if (ctx == null) return;
+
         ctx.cmd.waitQueueIdle(0);
-        if (rtShaderPasses != null) {
-            for (var pass : rtShaderPasses) {
-                pass.delete();
-            }
-        }
         pipeline.destory();
         rtShaderPasses = null;
         pipeline = null;

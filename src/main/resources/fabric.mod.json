@@ -15,7 +15,7 @@
   ],
   "depends": {
     "fabricloader": ">=0.14.21",
-    "iris": "=1.6.9",
-    "sodium": "=0.5.3"
+    "iris": "=1.6.14",
+    "sodium": "=0.5.5"
   }
 }

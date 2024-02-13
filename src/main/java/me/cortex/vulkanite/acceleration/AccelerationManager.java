@@ -1,6 +1,9 @@
 package me.cortex.vulkanite.acceleration;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
+import me.cortex.vulkanite.lib.cmd.VCmdBuff;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSet;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
@@ -38,7 +41,7 @@ public class AccelerationManager {
         tlasManager.setEntityData(data);
     }
 
-    private final List<VSemaphore> syncs = new LinkedList<>();
+    private final List<Long> blasExecutions = new LinkedList<>();
 
     //This updates the tlas internal structure, DOES NOT INCLUDING BUILDING THE TLAS
     public void updateTick() {
@@ -48,15 +51,16 @@ public class AccelerationManager {
             while (!blasResults.isEmpty()) {
                 var batch = blasResults.poll();
                 results.addAll(batch.results());
-                syncs.add(batch.semaphore());
+                blasExecutions.add(batch.execution());
             }
             tlasManager.updateSections(results);
         }
     }
 
-    public VAccelerationStructure buildTLAS(VSemaphore inLink, VSemaphore outLink) {
-        tlasManager.buildTLAS(inLink, outLink, syncs.toArray(new VSemaphore[0]));
-        syncs.clear();
+    public VRef<VAccelerationStructure> buildTLAS(int queueId, VCmdBuff cmd) {
+        blasExecutions.forEach(exec -> ctx.cmd.queueWaitForExeuction(queueId, blasBuilder.getAsyncQueue(), exec));
+        blasExecutions.clear();
+        tlasManager.buildTLAS(cmd);
         return tlasManager.getTlas();
     }
 
@@ -64,28 +68,11 @@ public class AccelerationManager {
         tlasManager.removeSection(section);
     }
 
-    //Cleans up any loose things such as semaphores waiting to be synced etc
-    public void cleanup() {
-        //TODO: FIXME: I DONT THINK THIS IS CORRECT OR WORKS, IM STILL LEAKING VRAM MEMORY OUT THE WAZOO WHEN f3+a reloading
-        ctx.cmd.waitQueueIdle(0);
-        ctx.cmd.waitQueueIdle(1);
-        try {
-            Thread.sleep(250L);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        ctx.cmd.waitQueueIdle(0);
-        ctx.cmd.waitQueueIdle(1);
-        syncs.forEach(VSemaphore::free);
-        syncs.clear();
-        tlasManager.cleanupTick();
-    }
-
-    public long getGeometrySet() {
+    public VRef<VDescriptorSet> getGeometrySet() {
         return tlasManager.getGeometrySet();
     }
 
-    public VDescriptorSetLayout getGeometryLayout() {
+    public VRef<VDescriptorSetLayout> getGeometryLayout() {
         return tlasManager.getGeometryLayout();
     }
 }

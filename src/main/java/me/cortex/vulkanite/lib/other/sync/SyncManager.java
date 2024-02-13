@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.other.sync;
 
 import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.memory.HandleDescriptorManger;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.vulkan.*;
@@ -40,15 +41,15 @@ public class SyncManager {
         this.device = device;
     }
 
-    public VFence createFence() {
+    public VRef<VFence> createFence() {
         try (var stack = stackPush()) {
             LongBuffer res = stack.callocLong(1);
             _CHECK_(vkCreateFence(device, VkFenceCreateInfo.calloc(stack).sType$Default(), null, res));
-            return new VFence(device, res.get(0));
+            return VFence.create(device, res.get(0));
         }
     }
 
-    private VGSemaphore createSharedBinarySemaphoreWin32() {
+    private VRef<VGSemaphore> createSharedBinarySemaphoreWin32() {
         try (var stack = stackPush()) {
             LongBuffer res = stack.callocLong(1);
             _CHECK_(vkCreateSemaphore(device,
@@ -80,11 +81,11 @@ public class SyncManager {
             if (glGetError() != GL_NO_ERROR)
                 throw new IllegalStateException();
 
-            return new VGSemaphore(device, semaphore, glSemaphore, pb.get(0));
+            return VGSemaphore.create(device, semaphore, glSemaphore, pb.get(0));
         }
     }
 
-    private VGSemaphore createSharedBinarySemaphoreFd() {
+    private VRef<VGSemaphore> createSharedBinarySemaphoreFd() {
         try (var stack = stackPush()) {
             LongBuffer res = stack.callocLong(1);
             _CHECK_(vkCreateSemaphore(device,
@@ -116,19 +117,19 @@ public class SyncManager {
             if (glGetError() != GL_NO_ERROR)
                 throw new IllegalStateException();
 
-            return new VGSemaphore(device, semaphore, glSemaphore, fd.get(0));
+            return VGSemaphore.create(device, semaphore, glSemaphore, fd.get(0));
         }
     }
 
-    public VGSemaphore createSharedBinarySemaphore() {
+    public VRef<VGSemaphore> createSharedBinarySemaphore() {
         return Vulkanite.IS_WINDOWS?createSharedBinarySemaphoreWin32():createSharedBinarySemaphoreFd();
     }
 
-    public VSemaphore createBinarySemaphore() {
+    public VRef<VSemaphore> createBinarySemaphore() {
         try (var stack = stackPush()) {
             LongBuffer res = stack.callocLong(1);
             _CHECK_(vkCreateSemaphore(device, VkSemaphoreCreateInfo.calloc(stack).sType$Default(), null, res));
-            return new VSemaphore(device, res.get(0));
+            return VSemaphore.create(device, res.get(0));
         }
     }
 

@@ -1,24 +1,36 @@
 package me.cortex.vulkanite.lib.memory;
 
 import me.cortex.vulkanite.client.Vulkanite;
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+import me.cortex.vulkanite.lib.base.VObject;
+import me.cortex.vulkanite.lib.base.VRef;
+import org.lwjgl.vulkan.VkDeviceOrHostAddressConstKHR;
 
 import static org.lwjgl.vulkan.VK10.VK_OBJECT_TYPE_BUFFER;
 import static org.lwjgl.vulkan.VK10.VK_WHOLE_SIZE;
 
-public class VBuffer extends TrackedResourceObject {
+public class VBuffer extends VObject {
     private VmaAllocator.BufferAllocation allocation;
+    private final VkDeviceOrHostAddressConstKHR deviceAddressConst;
 
-    VBuffer(VmaAllocator.BufferAllocation allocation) {
+    public static VRef<VBuffer> create(VmaAllocator.BufferAllocation allocation) {
+        return new VRef<>(new VBuffer(allocation));
+    }
+
+    protected VBuffer(VmaAllocator.BufferAllocation allocation) {
         this.allocation = allocation;
+        if (allocation.deviceAddress != -1) {
+            this.deviceAddressConst = VkDeviceOrHostAddressConstKHR.calloc()
+                    .deviceAddress(allocation.deviceAddress);
+        } else {
+            this.deviceAddressConst = null;
+        }
     }
 
     public long buffer() {
         return allocation.buffer;
     }
 
-    public void free() {
-        free0();
+    protected void free() {
         allocation.free();
         allocation = null;
     }
@@ -27,6 +39,12 @@ public class VBuffer extends TrackedResourceObject {
         if (allocation.deviceAddress == -1)
             throw new IllegalStateException();
         return allocation.deviceAddress;
+    }
+
+    public VkDeviceOrHostAddressConstKHR deviceAddressConst() {
+        if (allocation.deviceAddress == -1)
+            throw new IllegalStateException();
+        return deviceAddressConst;
     }
 
     public long map() {

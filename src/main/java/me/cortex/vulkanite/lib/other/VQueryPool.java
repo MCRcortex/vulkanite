@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.other;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+import me.cortex.vulkanite.lib.base.VObject;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -13,10 +14,10 @@ import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VQueryPool extends TrackedResourceObject {
+public class VQueryPool extends VObject {
     public final long pool;
     private final VkDevice device;
-    public VQueryPool(VkDevice device, int count, int type) {
+    private VQueryPool(VkDevice device, int count, int type) {
         this.device = device;
         try (MemoryStack stack = stackPush()) {
             LongBuffer pQueryPool = stack.mallocLong(1);
@@ -31,12 +32,8 @@ public class VQueryPool extends TrackedResourceObject {
         }
     }
 
-    public void reset(VCmdBuff cmd, int first, int size) {
-        reset(cmd.buffer, first, size);
-    }
-
-    public void reset(VkCommandBuffer cmd, int first, int size) {
-        vkCmdResetQueryPool(cmd, pool, first, size);
+    public static VRef<VQueryPool> create(VkDevice device, int count, int type) {
+        return new VRef<>(new VQueryPool(device, count, type));
     }
 
     public long[] getResultsLong(int count) {
@@ -53,8 +50,7 @@ public class VQueryPool extends TrackedResourceObject {
         }
     }
 
-    public void free() {
-        free0();
+    protected void free() {
         vkDestroyQueryPool(device, pool, null);
     }
 }

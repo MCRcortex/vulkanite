@@ -1,13 +1,11 @@
 package me.cortex.vulkanite.client;
 
 import me.cortex.vulkanite.acceleration.AccelerationManager;
-import me.cortex.vulkanite.acceleration.SharedQuadVkIndexBuffer;
-import me.cortex.vulkanite.client.rendering.VulkanPipeline;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.base.initalizer.VInitializer;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorPool;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
-import me.cortex.vulkanite.lib.descriptors.VTypedDescriptorPool;
 import me.jellysquid.mods.sodium.client.render.chunk.RenderSection;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildOutput;
 import net.minecraft.util.Util;
@@ -17,13 +15,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-import static org.lwjgl.vulkan.EXTDebugUtils.VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.EXTDescriptorIndexing.VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME;
-import static org.lwjgl.vulkan.EXTMemoryBudget.VK_EXT_MEMORY_BUDGET_EXTENSION_NAME;
-import static org.lwjgl.vulkan.KHR16bitStorage.VK_KHR_16BIT_STORAGE_EXTENSION_NAME;
-import static org.lwjgl.vulkan.KHR8bitStorage.VK_KHR_8BIT_STORAGE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
-import static org.lwjgl.vulkan.KHRBufferDeviceAddress.VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRDeferredHostOperations.VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalFenceCapabilities.VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRExternalFenceFd.VK_KHR_EXTERNAL_FENCE_FD_EXTENSION_NAME;
@@ -38,7 +31,6 @@ import static org.lwjgl.vulkan.KHRExternalSemaphoreFd.VK_KHR_EXTERNAL_SEMAPHORE_
 import static org.lwjgl.vulkan.KHRExternalSemaphoreWin32.VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRGetMemoryRequirements2.VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRGetPhysicalDeviceProperties2.VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
-import static org.lwjgl.vulkan.KHRRayQuery.VK_KHR_RAY_QUERY_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRShaderDrawParameters.VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRSpirv14.VK_KHR_SPIRV_1_4_EXTENSION_NAME;
@@ -56,7 +48,7 @@ public class Vulkanite {
     private final ArbitarySyncPointCallback fencedCallback = new ArbitarySyncPointCallback();
 
     private final AccelerationManager accelerationManager;
-    private final HashMap<VDescriptorSetLayout, VTypedDescriptorPool> descriptorPools = new HashMap<>();
+    private final HashMap<VDescriptorSetLayout, VRef<VDescriptorPool>> descriptorPools = new HashMap<>();
 
     public Vulkanite() {
         ctx = createVulkanContext();
@@ -79,21 +71,19 @@ public class Vulkanite {
         accelerationManager.chunkBuilds(results);
     }
 
-    public VTypedDescriptorPool getPoolByLayout(VDescriptorSetLayout layout) {
+    public VRef<VDescriptorPool> getPoolByLayout(VRef<VDescriptorSetLayout> layout) {
+        var key = layout.get();
         synchronized (descriptorPools) {
-            if (!descriptorPools.containsKey(layout)) {
-                descriptorPools.put(layout, new VTypedDescriptorPool(ctx, layout, 0));
+            if (!descriptorPools.containsKey(key)) {
+                descriptorPools.put(key, VDescriptorPool.create(ctx, layout, 0));
             }
-            return descriptorPools.get(layout);
+            return descriptorPools.get(key).addRef();
         }
     }
 
     public void removePoolByLayout(VDescriptorSetLayout layout) {
         synchronized (descriptorPools) {
-            if (descriptorPools.containsKey(layout)) {
-                descriptorPools.get(layout).free();
-                descriptorPools.remove(layout);
-            }
+            descriptorPools.remove(layout);
         }
     }
 
@@ -120,10 +110,7 @@ public class Vulkanite {
 
     public void destroy() {
         vkDeviceWaitIdle(ctx.device);
-        for (var pool : descriptorPools.values()) {
-            pool.free();
-        }
-        accelerationManager.cleanup();
+        descriptorPools.clear();
     }
 
     private static VContext createVulkanContext() {

@@ -1,7 +1,8 @@
 package me.cortex.vulkanite.lib.pipeline;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VObject;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.shader.ShaderModule;
@@ -14,30 +15,30 @@ import static org.lwjgl.vulkan.KHRRayTracingPipeline.VK_PIPELINE_BIND_POINT_RAY_
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.vkCmdTraceRaysKHR;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VRaytracePipeline extends TrackedResourceObject {
+public class VRaytracePipeline extends VObject {
     private final VContext context;
-    private final long pipeline;
-    private final long layout;
-    private final VBuffer shader_binding_table;
-    private final VkStridedDeviceAddressRegionKHR gen;
-    private final VkStridedDeviceAddressRegionKHR miss;
-    private final VkStridedDeviceAddressRegionKHR hit;
-    private final VkStridedDeviceAddressRegionKHR callable;
+    public final long pipeline;
+    public final long layout;
+    @SuppressWarnings("FieldCanBeLocal")
+    private final VRef<VBuffer> shader_binding_table;
+    public final VkStridedDeviceAddressRegionKHR gen;
+    public final VkStridedDeviceAddressRegionKHR miss;
+    public final VkStridedDeviceAddressRegionKHR hit;
+    public final VkStridedDeviceAddressRegionKHR callable;
     private final Set<ShaderModule> shadersUsed;
     public final ShaderReflection reflection;
 
-    VRaytracePipeline(VContext context, long pipeline, long layout, VBuffer sbtMap,
+    VRaytracePipeline(VContext context, long pipeline, long layout, final VRef<VBuffer> sbtMap,
                       VkStridedDeviceAddressRegionKHR raygen,
                       VkStridedDeviceAddressRegionKHR miss,
                       VkStridedDeviceAddressRegionKHR hit,
                       VkStridedDeviceAddressRegionKHR callable,
                       Set<ShaderModule> shadersUsed,
                       ShaderReflection reflection) {
-
         this.context = context;
         this.pipeline = pipeline;
         this.layout = layout;
-        this.shader_binding_table = sbtMap;
+        this.shader_binding_table = sbtMap.addRef();
         this.gen = raygen;
         this.miss = miss;
         this.hit = hit;
@@ -46,22 +47,8 @@ public class VRaytracePipeline extends TrackedResourceObject {
         this.reflection = reflection;
     }
 
-    public void bind(VCmdBuff cmd) {
-        vkCmdBindPipeline(cmd.buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline);
-    }
-
-    public void trace(VCmdBuff cmd, int width, int height, int depth) {
-        vkCmdTraceRaysKHR(cmd.buffer, gen, miss, hit, callable, width, height, depth);
-    }
-
-    public void bindDSet(VCmdBuff cmd, long... descs) {
-        vkCmdBindDescriptorSets(cmd.buffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, layout, 0, descs, null);
-    }
-
-    public void free() {
-        free0();
+    protected void free() {
         vkDestroyPipeline(context.device, pipeline, null);
-        shader_binding_table.free();
         gen.free();
         miss.free();
         hit.free();

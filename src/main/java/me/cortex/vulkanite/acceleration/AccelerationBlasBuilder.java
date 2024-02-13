@@ -7,6 +7,7 @@ package me.cortex.vulkanite.acceleration;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IAccelerationBuildResult;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
 import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
@@ -45,22 +46,26 @@ public class AccelerationBlasBuilder {
     private final VContext context;
     private record BLASTriangleData(int quadCount, int geometryFlags) {}
     private record BLASBuildJob(List<BLASTriangleData> geometries, JobPassThroughData data) {}
-    public record BLASBuildResult(VAccelerationStructure structure, JobPassThroughData data) {}
-    public record BLASBatchResult(List<BLASBuildResult> results, VSemaphore semaphore) { }
-    private final Thread worker;
+    public record BLASBuildResult(VRef<VAccelerationStructure> structure, JobPassThroughData data) {}
+    public record BLASBatchResult(List<BLASBuildResult> results, long execution) { }
+
     private final int asyncQueue;
     private final Consumer<BLASBatchResult> resultConsumer;
 
-    private final VQueryPool queryPool;
+    private final VRef<VQueryPool> queryPool;
 
     //TODO: maybe move to an executor type system
     private final Semaphore awaitingJobBatchess = new Semaphore(0);//Note: this is done to avoid spin locking on the job consumer
     private final ConcurrentLinkedDeque<List<BLASBuildJob>> batchedJobs = new ConcurrentLinkedDeque<>();
 
-    private final VComputePipeline gpuVertexDecodePipeline;
+    private final VRef<VComputePipeline> gpuVertexDecodePipeline;
+
+    public int getAsyncQueue() {
+        return asyncQueue;
+    }
 
     public AccelerationBlasBuilder(VContext context, int asyncQueue, Consumer<BLASBatchResult> resultConsumer) {
-        this.queryPool = new VQueryPool(context.device, 10000, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR);
+        this.queryPool = VQueryPool.create(context.device, 10000, VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR);
         this.context = context;
         this.asyncQueue = asyncQueue;
         this.resultConsumer = resultConsumer;
@@ -119,12 +124,10 @@ public class AccelerationBlasBuilder {
 
         var decodePipeBuilder = new ComputePipelineBuilder();
         decodePipeBuilder.addPushConstantRange(8 * 3, 0);
-        decodePipeBuilder.set(decodeShader.named());
+        decodePipeBuilder.set(decodeShader.get().named());
         gpuVertexDecodePipeline = decodePipeBuilder.build(context);
 
-        decodeShader.free();
-
-        worker = new Thread(this::run);
+        Thread worker = new Thread(this::run);
         worker.setName("Acceleration blas worker");
         worker.start();
     }
@@ -157,8 +160,8 @@ public class AccelerationBlasBuilder {
                     }
                 }
             }
+
             var sinlgeUsePoolWorker = context.cmd.getSingleUsePool();
-            sinlgeUsePoolWorker.doReleases();
 
             //Jobs are batched and built on the async vulkan queue then block synchronized with fence
             // which then results in compaction and dispatch to consumer
@@ -169,16 +172,15 @@ public class AccelerationBlasBuilder {
                 PointerBuffer buildRanges = stack.mallocPointer(jobs.size());
                 LongBuffer pAccelerationStructures = stack.mallocLong(jobs.size());
 
-                List<VBuffer> buffersToFree = new ArrayList<>(jobs.size() * 2);
-                var scratchBuffers = new VBuffer[jobs.size()];
-                var accelerationStructures = new VAccelerationStructure[jobs.size()];
+                var accelerationStructures = new ArrayList<VRef<VAccelerationStructure>>(jobs.size());
 
-                var uploadBuildCmd = sinlgeUsePoolWorker.createCommandBuffer();
-                uploadBuildCmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                var uploadBuildCmdRef = sinlgeUsePoolWorker.createCommandBuffer();
+                var uploadBuildCmd = uploadBuildCmdRef.get();
 
                 //Fill in the buildInfo and buildRanges
                 int i = -1;
-                vkCmdBindPipeline(uploadBuildCmd.buffer, VK_PIPELINE_BIND_POINT_COMPUTE, gpuVertexDecodePipeline.pipeline());
+                uploadBuildCmd.bindCompute(gpuVertexDecodePipeline);
+
                 for (var job : jobs) {
                     i++;
                     var brs = VkAccelerationStructureBuildRangeInfoKHR.calloc(job.geometries.size(), stack);
@@ -190,7 +192,7 @@ public class AccelerationBlasBuilder {
 
                     int vertexStride = 4 * 3;
                     for (var geometry : job.geometries) {
-                        buildBufferSize += geometry.quadCount * 4 * vertexStride;
+                        buildBufferSize += geometry.quadCount * 4L * vertexStride;
                     }
 
                     if (buildBufferSize <= 0) {
@@ -203,9 +205,8 @@ public class AccelerationBlasBuilder {
                                     | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                             0, 0);
-                    buildBuffer.setDebugUtilsObjectName("BLAS geometry buffer");
-                    buffersToFree.add(buildBuffer);
-                    var buildBufferAddr = buildBuffer.deviceAddress();
+                    buildBuffer.get().setDebugUtilsObjectName("BLAS geometry buffer");
+                    var buildBufferAddr = buildBuffer.get().deviceAddress();
                     long buildBufferOffset = 0;
 
                     uploadBuildCmd.encodeBufferBarrier(buildBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
@@ -223,8 +224,8 @@ public class AccelerationBlasBuilder {
                         // 2: outAddr
                         var pushConstant = new long[3];
                         var geometryInputBuffer = job.data.geometryBuffers().get(geoIdx);
-                        pushConstant[0] = geometry.quadCount * 4;
-                        pushConstant[1] = geometryInputBuffer.deviceAddress();
+                        pushConstant[0] = geometry.quadCount * 4L;
+                        pushConstant[1] = geometryInputBuffer.get().deviceAddress();
                         pushConstant[2] = buildBufferAddr + buildBufferOffset;
                         if (pushConstant[1] == 0) {
                             throw new IllegalStateException("Geometry input buffer address is 0");
@@ -232,10 +233,10 @@ public class AccelerationBlasBuilder {
                         if (pushConstant[2] == 0) {
                             throw new IllegalStateException("Build buffer address is 0");
                         }
-                        vkCmdPushConstants(uploadBuildCmd.buffer, gpuVertexDecodePipeline.layout(), VK_SHADER_STAGE_ALL, 0, pushConstant);
+                        uploadBuildCmd.pushConstants(0, pushConstant);
                         uploadBuildCmd.encodeBufferBarrier(geometryInputBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-                        vkCmdDispatch(uploadBuildCmd.buffer, Math.min((geometry.quadCount * 4 + 255) / 256, 256), 1, 1);
+                        uploadBuildCmd.dispatch(Math.min((geometry.quadCount * 4 + 255) / 256, 256), 1, 1);
 
                         VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(context,
                                 uploadBuildCmd,
@@ -265,7 +266,7 @@ public class AccelerationBlasBuilder {
                         //maxPrims.put(2);
                         //br.primitiveCount(2);
 
-                        buildBufferOffset += geometry.quadCount * 4 * vertexStride;
+                        buildBufferOffset += geometry.quadCount * 4L * vertexStride;
                     }
 
                     uploadBuildCmd.encodeBufferBarrier(buildBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -299,141 +300,83 @@ public class AccelerationBlasBuilder {
                     var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
                             VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256, 0);
-                    scratch.setDebugUtilsObjectName("BLAS scratch buffer");
+                    scratch.get().setDebugUtilsObjectName("BLAS scratch buffer");
 
-                    bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.deviceAddress()));
-                    bi.dstAccelerationStructure(structure.structure);
+                    bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.get().deviceAddress()));
+                    bi.dstAccelerationStructure(structure.get().structure);
 
-                    pAccelerationStructures.put(structure.structure);
+                    pAccelerationStructures.put(structure.get().structure);
 
-                    accelerationStructures[i] = structure;
-                    scratchBuffers[i] = scratch;
+                    accelerationStructures.add(structure);
+                    uploadBuildCmd.addBufferRef(scratch);
                 }
 
                 buildInfos.rewind();
                 buildRanges.rewind();
                 pAccelerationStructures.rewind();
 
-                VSemaphore link = context.sync.createBinarySemaphore();
                 {
-                    vkCmdBuildAccelerationStructuresKHR(uploadBuildCmd.buffer, buildInfos, buildRanges);
+                    vkCmdBuildAccelerationStructuresKHR(uploadBuildCmd.buffer(), buildInfos, buildRanges);
 
                     //TODO: should probably do memory barrier to read access
                     uploadBuildCmd.encodeMemoryBarrier();
 
-                    queryPool.reset(uploadBuildCmd, 0, jobs.size());
+                    uploadBuildCmd.resetQueryPool(queryPool, 0, jobs.size());
                     vkCmdWriteAccelerationStructuresPropertiesKHR(
-                            uploadBuildCmd.buffer,
+                            uploadBuildCmd.buffer(),
                             pAccelerationStructures,
                             VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR,
-                            queryPool.pool,
+                            queryPool.get().pool,
                             0);
 
-                    uploadBuildCmd.end();
+                    long buildExecution = context.cmd.submit(asyncQueue, uploadBuildCmdRef);
 
-                    VFence buildFence = context.sync.createFence();
-                    context.cmd.submit(asyncQueue, new VCmdBuff[]{uploadBuildCmd}, new VSemaphore[0], new int[0],
-                            new VSemaphore[]{link},
-                            buildFence);
-
-                    //vkDeviceWaitIdle(context.device);
-                    {
-                        //We need to wait for the fence which signals that the build has finished and we can query the result
-                        // TODO: find a cleaner way to wait on the query results (tho i think waiting on a fence is realistically the easiest thing to do)
-                        vkWaitForFences(context.device, buildFence.address(), true, -1);
-
-                        //FIXME: this is extream jank, we can clean up after this point because we know the fence has passed, this is so ugly tho
-
-                        for (var sb : scratchBuffers) {
-                            sb.free();
-                        }
-                        for (var b : buffersToFree) {
-                            b.free();
-                        }
-
-                        sinlgeUsePoolWorker.releaseNow(uploadBuildCmd);
-
-                        //We can destroy the fence here since we know its passed
-                        buildFence.free();
-                    }
+                    // Waiting on a semaphore is realistically the easiest thing to do rn
+                    context.cmd.hostWaitForExecution(asyncQueue, buildExecution);
                 }
 
-                long[] compactedSizes = queryPool.getResultsLong(jobs.size());
-                VSemaphore awaitSemaphore = context.sync.createBinarySemaphore();
-
-                VAccelerationStructure[] compactedAS = new VAccelerationStructure[jobs.size()];
+                long[] compactedSizes = queryPool.get().getResultsLong(jobs.size());
 
                 List<BLASBuildResult> results = new ArrayList<>();
 
                 //vkDeviceWaitIdle(context.device);
 
                 //---------------------
+                long blasExecution = 0;
                 {
-                    var cmd = sinlgeUsePoolWorker.createCommandBuffer();
-                    cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+                    var cmdRef = sinlgeUsePoolWorker.createCommandBuffer();
 
-                    //Dont need a memory barrier cause submit ensures cache flushing already
-
+                    // Dont need a memory barrier cause submit ensures cache flushing already
                     for (int idx = 0; idx < compactedSizes.length; idx++) {
                         var as = context.memory.createAcceleration(compactedSizes[idx], 256,
                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
-                        vkCmdCopyAccelerationStructureKHR(cmd.buffer, VkCopyAccelerationStructureInfoKHR.calloc(stack).sType$Default()
-                                .src(accelerationStructures[idx].structure)
-                                .dst(as.structure)
+                        vkCmdCopyAccelerationStructureKHR(cmdRef.get().buffer(), VkCopyAccelerationStructureInfoKHR.calloc(stack).sType$Default()
+                                .src(accelerationStructures.get(idx).get().structure)
+                                .dst(as.get().structure)
                                 .mode(VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR));
 
-                        compactedAS[idx] = as;
                         var job = jobs.get(idx);
                         results.add(new BLASBuildResult(as, job.data));
                     }
 
-                    vkCmdPipelineBarrier(cmd.buffer, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, null, null, null);
-
-                    VFence fence = context.sync.createFence();
-
-                    cmd.end();
-                    context.cmd.submit(asyncQueue, new VCmdBuff[]{cmd},
-                            new VSemaphore[]{link},
-                            new int[]{VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR},
-                            new VSemaphore[]{awaitSemaphore},
-                            fence);
-
-                    context.sync.addCallback(fence, () -> {
-                        for (var as : accelerationStructures) {
-                            as.free();
-                        }
-
-                        cmd.enqueueFree();
-                        fence.free();
-                        link.free();
-                    });
+                    blasExecution = context.cmd.submit(asyncQueue, cmdRef);
                 }
 
-                //Submit to callback, linking the build semaphore so that we dont stall the queue more than we need
-                resultConsumer.accept(new BLASBatchResult(results, awaitSemaphore));
+                resultConsumer.accept(new BLASBatchResult(results, blasExecution));
 
-                //TODO: FIXME, so there is an issue in that the query pool needs to be represented per thing
-                // since the cpu can run ahead of the gpu, need multiple query pools until we know the gpu is finished with it
-                // using a fence, OR FOR THREAD ONLY we can assume that we allow one batch per queue
-                //that is, at the end (here) we do a vkWaitForFences on the final fence, _then_ we can release all the temporary
-                // resources that we know weve used, TODO: I THINK I FIXED THIS BY PUTTING A FENCE SYNC between stage 1 and 2
-
-                //NOTE: THIS IS ACTUALLY WRONG, since we need to block on the query result in order to do the second part
-                // it doesnt matter about needing multiple query pools
-
-                //vkDeviceWaitIdle(context.device);
+                context.cmd.hostWaitForExecution(asyncQueue, blasExecution);
             }
         }
     }
 
 
 
-    private VBuffer uploadTerrainGeometry(BuiltSectionMeshParts meshParts, VCmdBuff cmd) {
+    private VRef<VBuffer> uploadTerrainGeometry(BuiltSectionMeshParts meshParts, VCmdBuff cmd) {
         var buff = context.memory.createBuffer(meshParts.getVertexData().getLength(),
                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        buff.setDebugUtilsObjectName("Terrain geometry buffer");
+        buff.get().setDebugUtilsObjectName("Terrain geometry buffer");
 
         cmd.encodeDataUpload(context.memory, MemoryUtil.memAddress(meshParts.getVertexData().getDirectBuffer()), buff, 0, meshParts.getVertexData().getLength());
 
@@ -452,7 +395,7 @@ public class AccelerationBlasBuilder {
             if (acbr == null)
                 continue;
             List<BLASTriangleData> buildData = new ArrayList<>();
-            List<VBuffer> geometryBuffers = new ArrayList<>();
+            List<VRef<VBuffer>> geometryBuffers = new ArrayList<>();
             for (var entry : acbr.entrySet()) {
                 int flag = entry.getKey() == DefaultTerrainRenderPasses.SOLID ? VK_GEOMETRY_OPAQUE_BIT_KHR : 0;
                 buildData.add(new BLASTriangleData(entry.getValue().quadCount(), flag));
@@ -464,10 +407,9 @@ public class AccelerationBlasBuilder {
 
                 if (!hasJobs) {
                     hasJobs = true;
-                    cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
                 }
 
-                geometryBuffers.add(uploadTerrainGeometry(geometry, cmd));
+                geometryBuffers.add(uploadTerrainGeometry(geometry, cmd.get()));
             }
 
             if (buildData.size() > 0) {
@@ -477,14 +419,13 @@ public class AccelerationBlasBuilder {
         }
 
         if (hasJobs) {
-            cmd.end();
             // TODO: Which queue should this be submitted to?
             // Should we move all uploads to the worker?
-            context.cmd.submitOnceAndWait(0, cmd);
+            context.cmd.submitOnceAndWait(1, cmd);
         }
 
         if (jobs.isEmpty()) {
-            return;//No jobs to do
+            return; // No jobs to do
         }
         batchedJobs.add(jobs);
         awaitingJobBatchess.release();

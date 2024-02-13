@@ -6,9 +6,11 @@ import me.cortex.vulkanite.compat.IVGBuffer;
 import me.cortex.vulkanite.compat.IVGImage;
 import me.cortex.vulkanite.compat.RaytracingShaderSet;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
 import me.cortex.vulkanite.lib.descriptors.DescriptorUpdateBuilder;
+import me.cortex.vulkanite.lib.descriptors.VDescriptorSet;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.memory.VImage;
@@ -51,13 +53,12 @@ import static org.lwjgl.vulkan.VK12.VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 public class VulkanPipeline {
     private final VContext ctx;
     private final AccelerationManager accelerationManager;
-    private final VCommandPool singleUsePool;
 
-    private record RtPipeline(VRaytracePipeline pipeline, int commonSet, int geomSet, int customTexSet, int ssboSet) {}
+    private record RtPipeline(VRef<VRaytracePipeline> pipeline, int commonSet, int geomSet, int customTexSet, int ssboSet) {}
     private ArrayList<RtPipeline> raytracePipelines = new ArrayList<>();
 
-    private final VSampler sampler;
-    private final VSampler ctexSampler;
+    private final VRef<VSampler> sampler;
+    private final VRef<VSampler> ctexSampler;
 
     private final SharedImageViewTracker[] irisRenderTargetViews;
     private final SharedImageViewTracker[] customTextureViews;
@@ -65,10 +66,10 @@ public class VulkanPipeline {
     private final SharedImageViewTracker blockAtlasNormalView;
     private final SharedImageViewTracker blockAtlasSpecularView;
 
-    private final VImage placeholderSpecular;
-    private final VImageView placeholderSpecularView;
-    private final VImage placeholderNormals;
-    private final VImageView placeholderNormalsView;
+    private final VRef<VImage> placeholderSpecular;
+    private final VRef<VImageView> placeholderSpecularView;
+    private final VRef<VImage> placeholderNormals;
+    private final VRef<VImageView> placeholderNormalsView;
 
     private int fidx;
 
@@ -76,17 +77,15 @@ public class VulkanPipeline {
 
     private final boolean supportsEntities;
 
-    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds, VGImage[] customTextures) {
+    public VulkanPipeline(VContext ctx, AccelerationManager accelerationManager, RaytracingShaderSet[] passes, int[] ssboIds, List<VRef<VGImage>> customTextures) {
         this.ctx = ctx;
         this.accelerationManager = accelerationManager;
-        this.singleUsePool = ctx.cmd.createSingleUsePool();
-        this.singleUsePool.setDebugUtilsObjectName("VulkanPipeline singleUsePool");
 
         {
-            this.customTextureViews = new SharedImageViewTracker[customTextures.length];
-            for (int i = 0; i < customTextures.length; i++) {
+            this.customTextureViews = new SharedImageViewTracker[customTextures.size()];
+            for (int i = 0; i < customTextures.size(); i++) {
                 int index = i;
-                this.customTextureViews[i] = new SharedImageViewTracker(ctx, () -> customTextures[index]);
+                this.customTextureViews[i] = new SharedImageViewTracker(ctx, () -> new VRef<>(customTextures.get(index).get()));
             }
 
             this.irisRenderTargetViews = new SharedImageViewTracker[maxIrisRenderTargets];
@@ -108,9 +107,9 @@ public class VulkanPipeline {
                 return ((IVGImage) holder.getSpecularTexture()).getVGImage();
             });
             this.placeholderSpecular = ctx.memory.createImage2D(4, 4, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            this.placeholderSpecularView = new VImageView(ctx, placeholderSpecular);
+            this.placeholderSpecularView = VImageView.create(ctx, placeholderSpecular);
             this.placeholderNormals = ctx.memory.createImage2D(4, 4, 1, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-            this.placeholderNormalsView = new VImageView(ctx, placeholderNormals);
+            this.placeholderNormalsView = VImageView.create(ctx, placeholderNormals);
 
             try (var stack = stackPush()) {
                 var initZeros = stack.callocInt(4 * 4);
@@ -120,23 +119,18 @@ public class VulkanPipeline {
                 }
                 initNormals.rewind();
 
-                var cmd = singleUsePool.createCommandBuffer();
-                cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-                cmd.encodeImageTransition(placeholderSpecular, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
-                cmd.encodeImageTransition(placeholderNormals, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
-                cmd.encodeImageUpload(ctx.memory, MemoryUtil.memAddress(initZeros), placeholderSpecular, initZeros.capacity() * 4, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                cmd.encodeImageUpload(ctx.memory, MemoryUtil.memAddress(initNormals), placeholderNormals, initNormals.capacity() * 4, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                cmd.encodeImageTransition(placeholderSpecular, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
-                cmd.encodeImageTransition(placeholderNormals, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
-                cmd.end();
-
-                ctx.cmd.submit(0, VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(stack.pointers(cmd)));
-
-                Vulkanite.INSTANCE.addSyncedCallback(cmd::enqueueFree);
+                ctx.cmd.executeWait(cmd -> {
+                    cmd.encodeImageTransition(placeholderSpecular, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                    cmd.encodeImageTransition(placeholderNormals, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                    cmd.encodeImageUpload(ctx.memory, MemoryUtil.memAddress(initZeros), placeholderSpecular, initZeros.capacity() * 4L, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                    cmd.encodeImageUpload(ctx.memory, MemoryUtil.memAddress(initNormals), placeholderNormals, initNormals.capacity() * 4L, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                    cmd.encodeImageTransition(placeholderSpecular, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                    cmd.encodeImageTransition(placeholderNormals, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+                });
             }
         }
 
-        this.sampler = new VSampler(ctx, a -> a.magFilter(VK_FILTER_NEAREST)
+        this.sampler = VSampler.create(ctx, a -> a.magFilter(VK_FILTER_NEAREST)
                 .minFilter(VK_FILTER_NEAREST)
                 .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
                 .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
@@ -147,7 +141,7 @@ public class VulkanPipeline {
                 .borderColor(VK_BORDER_COLOR_INT_OPAQUE_BLACK)
                 .maxAnisotropy(1.0f));
 
-        this.ctexSampler = new VSampler(ctx, a -> a.magFilter(VK_FILTER_LINEAR)
+        this.ctexSampler = VSampler.create(ctx, a -> a.magFilter(VK_FILTER_LINEAR)
                 .minFilter(VK_FILTER_LINEAR)
                 .mipmapMode(VK_SAMPLER_MIPMAP_MODE_NEAREST)
                 .addressModeU(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE)
@@ -208,8 +202,8 @@ public class VulkanPipeline {
                 int customTexSet = -1;
                 int ssboSet = -1;
 
-                for (int setIdx = 0; setIdx < pipe.reflection.getNSets(); setIdx++) {
-                    var set = pipe.reflection.getSet(setIdx);
+                for (int setIdx = 0; setIdx < pipe.get().reflection.getNSets(); setIdx++) {
+                    var set = pipe.get().reflection.getSet(setIdx);
                     if (set.validate(commonSetExpected)) {
                         commonSet = setIdx;
                     } else if (set.validate(geomSetExpected)) {
@@ -243,39 +237,42 @@ public class VulkanPipeline {
         accelerationManager.setEntityData(supportsEntities?capture.capture(CapturedRenderingState.INSTANCE.getTickDelta(), MinecraftClient.getInstance().world):null);
     }
 
-    public void renderPostShadows(List<VGImage> outImgs, Camera camera, ShaderStorageBuffer[] ssbos, MixinCelestialUniforms celestialUniforms) {
+    public void renderPostShadows(List<VRef<VGImage>> vgOutImgs, Camera camera, ShaderStorageBuffer[] ssbos, MixinCelestialUniforms celestialUniforms) {
+        ctx.cmd.newFrame();
+
+//        System.gc();
+
         buildEntities();
 
-
-        this.singleUsePool.doReleases();
         PBRTextureManager.notifyPBRTexturesChanged();
 
         var in = ctx.sync.createSharedBinarySemaphore();
-        var outImgsGlIds = outImgs.stream().mapToInt(i -> i.glId).toArray();
-        var outImgsGlLayouts = outImgs.stream().mapToInt(i -> GL_LAYOUT_GENERAL_EXT).toArray();
-        in.glSignal(new int[0], outImgsGlIds, outImgsGlLayouts);
+        var outImgsGlIds = vgOutImgs.stream().mapToInt(i -> i.get().glId).toArray();
+        var outImgsGlLayouts = vgOutImgs.stream().mapToInt(i -> GL_LAYOUT_GENERAL_EXT).toArray();
+        in.get().glSignal(new int[0], outImgsGlIds, outImgsGlLayouts);
         glFlush();
 
-        var tlasLink = ctx.sync.createBinarySemaphore();
+        var cmdRef = ctx.cmd.getSingleUsePool().createCommandBuffer();
+        var cmd = cmdRef.get();
 
-        var tlas = accelerationManager.buildTLAS(in, tlasLink);
+        var tlas = accelerationManager.buildTLAS(0, cmd);
 
         if (tlas == null) {
             glFinish();
-            tlasLink.free();
-            in.free();
             return;
         }
 
+        var outImgs = vgOutImgs.stream().map(i -> new VRef<VImage>(i.get())).toList();
+
         var out = ctx.sync.createSharedBinarySemaphore();
-        VBuffer uboBuffer;
+        VRef<VBuffer> uboBuffer;
         {
             uboBuffer = ctx.memory.createBuffer(1024,
                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                     0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
-            uboBuffer.setDebugUtilsObjectName("VulkanPipeline UBO");
-            long ptr = uboBuffer.map();
+            uboBuffer.get().setDebugUtilsObjectName("VulkanPipeline UBO");
+            long ptr = uboBuffer.get().map();
             MemoryUtil.memSet(ptr, 0, 1024);
             {
                 ByteBuffer bb = MemoryUtil.memByteBuffer(ptr, 1024);
@@ -302,8 +299,8 @@ public class VulkanPipeline {
                 bb.putInt(Float.BYTES * 41, flags);
                 bb.rewind();
             }
-            uboBuffer.unmap();
-            uboBuffer.flush();
+            uboBuffer.get().unmap();
+            uboBuffer.get().flush();
 
             // Call getView() on shared image view trackers to ensure they are created
             blockAtlasView.getView();
@@ -312,10 +309,6 @@ public class VulkanPipeline {
             for (var v : customTextureViews) {
                 v.getView();
             }
-
-            //TODO: dont use a single use pool for commands like this...
-            var cmd = singleUsePool.createCommandBuffer();
-            cmd.begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
             {
                 // Put barriers on images & transition to the optimal layout
@@ -337,14 +330,17 @@ public class VulkanPipeline {
 
             for (var record : raytracePipelines) {
                 var pipeline = record.pipeline;
-                pipeline.bind(cmd);
-                var layouts = pipeline.reflection.getLayouts(); // Should be cached already
-                var sets = new long[layouts.size()];
+                cmd.bindRT(pipeline);
+                var layouts = pipeline.get().reflection.getLayouts(); // Should be cached already
+                var sets = new ArrayList<VRef<VDescriptorSet>>(layouts.size());
+                for (int i = 0; i < layouts.size(); i++) {
+                    sets.add(null); // Well, LOL, can't use Arrays.toList because it's generic
+                }
                 if (record.commonSet != -1) {
-                    var commonSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.commonSet)).allocateSet();
+                    var commonSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.commonSet)).get().allocateSet();
 
-                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.commonSet))
-                            .set(commonSet.set)
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.get().reflection.getSet(record.commonSet))
+                            .set(commonSet)
                             .uniform(0, uboBuffer)
                             .acceleration(1, tlas)
                             .imageSampler(3, blockAtlasView.getView(), sampler)
@@ -356,48 +352,45 @@ public class VulkanPipeline {
                                     blockAtlasSpecularView.getView() != null ? blockAtlasSpecularView.getView()
                                             : placeholderSpecularView,
                                     sampler);
-                    List<VImageView> outImgViewList = new ArrayList<>(outImgs.size());
+                    List<VRef<VImageView>> outImgViewList = new ArrayList<>(outImgs.size());
                     for (int i = 0; i < outImgs.size(); i++) {
                         int index = i;
-                        outImgViewList.add(irisRenderTargetViews[i].getView(() -> outImgs.get(index)));
+                        outImgViewList.add(irisRenderTargetViews[i].getView(() -> vgOutImgs.get(index)));
                     }
                     updater.imageStore(6, 0, outImgViewList);
                     updater.apply();
 
-                    sets[record.commonSet] = commonSet.set;
-                    cmd.addTransientResource(commonSet);
+                    sets.set(record.commonSet, commonSet);
                 }
                 if (record.geomSet != -1) {
-                    sets[record.geomSet] = accelerationManager.getGeometrySet();
+                    sets.set(record.geomSet, accelerationManager.getGeometrySet());
                 }
                 if (record.customTexSet != -1) {
-                    var ctexSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.customTexSet)).allocateSet();
+                    var ctexSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.customTexSet)).get().allocateSet();
 
-                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.customTexSet))
-                            .set(ctexSet.set);
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.get().reflection.getSet(record.customTexSet))
+                            .set(ctexSet);
                     for (int i = 0; i < customTextureViews.length; i++) {
                         updater.imageSampler(i, customTextureViews[i].getView(), ctexSampler);
                     }
                     updater.apply();
 
-                    sets[record.customTexSet] = ctexSet.set;
-                    cmd.addTransientResource(ctexSet);
+                    sets.set(record.customTexSet, ctexSet);
                 }
                 if (record.ssboSet != -1) {
-                    var ssboSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.ssboSet)).allocateSet();
+                    var ssboSet = Vulkanite.INSTANCE.getPoolByLayout(layouts.get(record.ssboSet)).get().allocateSet();
 
-                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.reflection.getSet(record.ssboSet))
-                            .set(ssboSet.set);
+                    var updater = new DescriptorUpdateBuilder(ctx, pipeline.get().reflection.getSet(record.ssboSet))
+                            .set(ssboSet);
                     for (ShaderStorageBuffer ssbo : ssbos) {
-                        updater.buffer(ssbo.getIndex(), ((IVGBuffer) ssbo).getBuffer());
+                        updater.buffer(ssbo.getIndex(), new VRef<>(((IVGBuffer) ssbo).getBuffer().get()));
                     }
                     updater.apply();
 
-                    sets[record.ssboSet] = ssboSet.set;
-                    cmd.addTransientResource(ssboSet);
+                    sets.set(record.ssboSet, ssboSet);
                 }
-                pipeline.bindDSet(cmd, sets);
-                pipeline.trace(cmd, outImgs.get(0).width, outImgs.get(0).height, 1);
+                cmd.bindDSet(sets);
+                cmd.traceRays(outImgs.get(0).get().width, outImgs.get(0).get().height, 1);
 
                 // Barrier on the output images
                 for (var img : outImgs) {
@@ -419,27 +412,10 @@ public class VulkanPipeline {
                 }
             }
 
-            cmd.end();
-            var fence = ctx.sync.createFence();
-            ctx.cmd.submit(0, new VCmdBuff[]{cmd}, new VSemaphore[]{tlasLink}, new int[]{VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR}, new VSemaphore[]{out}, fence);
-
-
-            var semCapture = previousSemaphore;
-            previousSemaphore = out;
-            ctx.sync.addCallback(fence, ()->{
-                tlasLink.free();
-                in.free();
-                cmd.enqueueFree();
-                fence.free();
-
-                uboBuffer.free();
-                if (semCapture != null) {
-                    semCapture.free();
-                }
-            });
+            ctx.cmd.submit(0, cmdRef, Arrays.asList(new VRef<>(in.get())), new int[]{VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT}, Arrays.asList(new VRef<>(out.get())), null);
         }
 
-        out.glWait(new int[0], outImgsGlIds, outImgsGlLayouts);
+        out.get().glWait(new int[0], outImgsGlIds, outImgsGlLayouts);
         glFlush();
 
         fidx++;
@@ -449,53 +425,6 @@ public class VulkanPipeline {
 
     public void destory() {
         vkDeviceWaitIdle(ctx.device);
-
-        // Check pending fences first
-        // Then destroy the cmd pool (which destroys linked transient resources)
-        ctx.sync.checkFences();
-        if (singleUsePool != null) {
-            singleUsePool.doReleases();
-            singleUsePool.free();
-        }
-        if (previousSemaphore != null) {
-            previousSemaphore.free();
-        }
-        // Finally destroy the pipelines
-        // (Which destroys the descriptor set layouts & releases the VTypedDescriptorPool)
-        for (var pass : raytracePipelines) {
-            if (pass != null) {
-                pass.pipeline.free();
-            }
-        }
-
-        for (SharedImageViewTracker customTexView : customTextureViews) {
-            if (customTexView != null)
-                customTexView.free();
-        }
-
-        for (SharedImageViewTracker irisRenderTargetView : irisRenderTargetViews) {
-            if (irisRenderTargetView != null)
-                irisRenderTargetView.free();
-        }
-
-        if (blockAtlasView != null)
-            blockAtlasView.free();
-        if (blockAtlasNormalView != null)
-            blockAtlasNormalView.free();
-        if (blockAtlasSpecularView != null)
-            blockAtlasSpecularView.free();
-        if (placeholderNormalsView != null)
-            placeholderNormalsView.free();
-        if (placeholderNormals != null)
-            placeholderNormals.free();
-        if (placeholderSpecularView != null)
-            placeholderSpecularView.free();
-        if (placeholderSpecular != null)
-            placeholderSpecular.free();
-        if (sampler != null)
-            sampler.free();
-        if (ctexSampler != null)
-            ctexSampler.free();
     }
 
 

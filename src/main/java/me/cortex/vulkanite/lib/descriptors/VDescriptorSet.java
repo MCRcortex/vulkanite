@@ -1,21 +1,26 @@
 package me.cortex.vulkanite.lib.descriptors;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+import me.cortex.vulkanite.lib.base.VObject;
+import me.cortex.vulkanite.lib.base.VRef;
 
-public class VDescriptorSet extends TrackedResourceObject {
-    private final VTypedDescriptorPool pool;
+import java.util.HashMap;
+import java.util.Map;
+
+public class VDescriptorSet extends VObject {
+    private final VDescriptorPool pool;
     public final long poolHandle;
     public final long set;
 
-    VDescriptorSet(VTypedDescriptorPool pool, long poolHandle, long set) {
+    public Map<Integer, VRef<VObject>> refs = new HashMap<>();
+
+    protected VDescriptorSet(VDescriptorPool pool, long poolHandle, long set) {
         this.pool = pool;
         this.poolHandle = poolHandle;
         this.set = set;
     }
 
     @Override
-    public void free() {
-        free0();
+    protected void free() {
         pool.freeSet(this);
     }
 }

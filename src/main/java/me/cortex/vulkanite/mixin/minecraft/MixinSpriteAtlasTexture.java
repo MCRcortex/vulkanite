@@ -3,6 +3,7 @@ package me.cortex.vulkanite.mixin.minecraft;
 import com.mojang.blaze3d.platform.GlStateManager;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVGImage;
+import me.cortex.vulkanite.lib.base.VRef;
 import net.minecraft.client.texture.AbstractTexture;
 import net.minecraft.client.texture.SpriteAtlasTexture;
 import org.spongepowered.asm.mixin.Mixin;
@@ -19,7 +20,6 @@ public abstract class MixinSpriteAtlasTexture extends AbstractTexture implements
     private void redirect(int id, int maxLevel, int width, int height) {
         if (getVGImage() != null) {
             System.err.println("Vulkan image already allocated, releasing");
-            Vulkanite.INSTANCE.addSyncedCallback(getVGImage()::free);
             setVGImage(null);
         }
 
@@ -35,11 +35,11 @@ public abstract class MixinSpriteAtlasTexture extends AbstractTexture implements
                 GL_RGBA8,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        img.setDebugUtilsObjectName("RenderTarget MainSpriteAtlasTexture");
+        img.get().setDebugUtilsObjectName("RenderTarget MainSpriteAtlasTexture");
         setVGImage(img);
 
         Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {
-            cmdbuf.encodeImageTransition(img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+            cmdbuf.encodeImageTransition(new VRef<>(img.get()), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
         });
 
 

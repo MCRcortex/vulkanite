@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.other.sync;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+import me.cortex.vulkanite.lib.base.VObject;
+import me.cortex.vulkanite.lib.base.VRef;
 import org.lwjgl.system.Pointer;
 import org.lwjgl.vulkan.VkDevice;
 
@@ -8,13 +9,17 @@ import java.util.Objects;
 
 import static org.lwjgl.vulkan.VK10.vkDestroyFence;
 
-public final class VFence extends TrackedResourceObject implements Pointer {
+public final class VFence extends VObject implements Pointer {
     private final VkDevice device;
     private final long fence;
 
-    public VFence(VkDevice device, long fence) {
+    private VFence(VkDevice device, long fence) {
         this.device = device;
         this.fence = fence;
+    }
+
+    static VRef<VFence> create(VkDevice device, long fence) {
+        return new VRef<>(new VFence(device, fence));
     }
 
     @Override
@@ -22,8 +27,8 @@ public final class VFence extends TrackedResourceObject implements Pointer {
         return fence;
     }
 
-    public void free() {
-        free0();
+    @Override
+    protected void free() {
         vkDestroyFence(device, fence, null);
     }
 

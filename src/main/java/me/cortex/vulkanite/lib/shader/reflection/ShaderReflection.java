@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.shader.reflection;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import org.lwjgl.util.spvc.SpvcReflectedResource;
@@ -195,13 +196,13 @@ public class ShaderReflection {
         return out;
     }
 
-    public List<VDescriptorSetLayout> buildSetLayouts(VContext context) {
+    public List<VRef<VDescriptorSetLayout>> buildSetLayouts(VContext context) {
         // TODO: Pick a better number, somehow
         return buildSetLayouts(context, 65536);
     }
 
-    private List<VDescriptorSetLayout> layouts = new ArrayList<>();
-    public List<VDescriptorSetLayout> buildSetLayouts(VContext context, int runtimeSizedArrayMaxSize) {
+    private List<VRef<VDescriptorSetLayout>> layouts = new ArrayList<>();
+    public List<VRef<VDescriptorSetLayout>> buildSetLayouts(VContext context, int runtimeSizedArrayMaxSize) {
         freeLayouts();
         layouts = new ArrayList<>();
         for (var set : sets) {
@@ -231,14 +232,12 @@ public class ShaderReflection {
         return layouts;
     }
 
-    public final List<VDescriptorSetLayout> getLayouts() {
+    public final List<VRef<VDescriptorSetLayout>> getLayouts() {
         return layouts;
     }
 
     public void freeLayouts() {
-        for (var l : layouts) {
-            l.free();
-        }
+        layouts.clear();
     }
 
     private static void _CHECK_(int status) {

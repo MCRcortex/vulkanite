@@ -2,6 +2,7 @@ package me.cortex.vulkanite.lib.descriptors;
 
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutBinding;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutCreateInfo;
@@ -45,7 +46,7 @@ public class DescriptorSetLayoutBuilder {
         this.flags = flags;
     }
 
-    public VDescriptorSetLayout build(VContext ctx) {
+    public VRef<VDescriptorSetLayout> build(VContext ctx) {
         try (var stack = stackPush()) {
             var info = VkDescriptorSetLayoutCreateInfo.calloc(stack)
                     .sType$Default()
@@ -66,7 +67,7 @@ public class DescriptorSetLayoutBuilder {
 
             LongBuffer pBuffer = stack.mallocLong(1);
             _CHECK_(vkCreateDescriptorSetLayout(ctx.device, info, null, pBuffer));
-            return new VDescriptorSetLayout(ctx, pBuffer.get(0), types.toIntArray());
+            return VDescriptorSetLayout.create(ctx, pBuffer.get(0), types.toIntArray());
         }
     }
 }

@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.pipeline;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.shader.ShaderModule;
 import org.lwjgl.vulkan.*;
@@ -19,8 +20,8 @@ public class ComputePipelineBuilder {
 
     }
 
-    Set<VDescriptorSetLayout> layouts = new LinkedHashSet<>();
-    public ComputePipelineBuilder addLayout(VDescriptorSetLayout layout) {
+    Set<VRef<VDescriptorSetLayout>> layouts = new LinkedHashSet<>();
+    public ComputePipelineBuilder addLayout(VRef<VDescriptorSetLayout> layout) {
         layouts.add(layout);
         return this;
     }
@@ -38,14 +39,14 @@ public class ComputePipelineBuilder {
         pushConstants.add(new PushConstant(size, offset));
     }
 
-    public VComputePipeline build(VContext context) {
+    public VRef<VComputePipeline> build(VContext context) {
         try (var stack = stackPush()) {
 
             VkPipelineLayoutCreateInfo layoutCreateInfo = VkPipelineLayoutCreateInfo.calloc(stack)
                     .sType$Default();
             {
                 //TODO: cleanup and add push constants
-                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(a->a.layout).toArray()));
+                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(a->a.get().layout).toArray()));
             }
 
             if (pushConstants.size() > 0) {
@@ -71,7 +72,7 @@ public class ComputePipelineBuilder {
                     .layout(pLayout.get(0))
                     .stage(shaderStage), null, pPipeline));
 
-            return new VComputePipeline(context, pLayout.get(0), pPipeline.get(0));
+            return new VRef<>(new VComputePipeline(context, pLayout.get(0), pPipeline.get(0)));
         }
     }
 }
