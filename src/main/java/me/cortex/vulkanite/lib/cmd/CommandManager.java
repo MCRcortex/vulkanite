@@ -1,7 +1,5 @@
 package me.cortex.vulkanite.lib.cmd;
 
-import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
-
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -18,6 +16,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.vkWaitSemaphores;
@@ -27,14 +26,11 @@ public class CommandManager {
     private final VkDevice device;
     private final Queue[] queues;
     private final ThreadLocal<VRef<VCommandPool>> threadLocalPool =
-            new ThreadLocal<>() {
-                @Override
-                protected VRef<VCommandPool> initialValue() {
-                    var pool = createSingleUsePool();
-                    pool.get().setDebugUtilsObjectName("Thread-local single use pool");
-                    return pool;
-                }
-            };
+            ThreadLocal.withInitial(() -> {
+                var pool = createSingleUsePool();
+                pool.get().setDebugUtilsObjectName("Thread-local single use pool");
+                return pool;
+            });
 
     public CommandManager(VkDevice device, int queues) {
         this.device = device;
@@ -69,6 +65,7 @@ public class CommandManager {
 
     /**
      * Enqueues a wait for a timeline value on a queue
+     *
      * @param waitQueueId      The queue that will wait
      * @param executionQueueId The queue whose timeline value will be waited for
      * @param execution        The timeline value to wait for
@@ -79,6 +76,7 @@ public class CommandManager {
 
     /**
      * Wait on the host for a timeline value on a queue
+     *
      * @param waitQueueId The queue whose timeline value will be waited for
      * @param execution   The timeline value to wait for
      */
@@ -125,12 +123,12 @@ public class CommandManager {
 
     private static class Queue {
         public final VkQueue queue;
-        public final Multimap<Integer, Long> waitingFor = Multimaps.synchronizedMultimap(HashMultimap.<Integer, Long>create());
+        public final Multimap<Integer, Long> waitingFor = Multimaps.synchronizedMultimap(HashMultimap.create());
         public final ConcurrentHashMap<Long, VRef<VCmdBuff>> submitted = new ConcurrentHashMap<>();
-        public AtomicLong timeline = new AtomicLong(1);
-        public long completedTimestamp = 0;
         public final VRef<VSemaphore> timelineSema;
         public final Deque<Long> frameTimestamps = new ArrayDeque<>(3);
+        public AtomicLong timeline = new AtomicLong(1);
+        public long completedTimestamp = 0;
 
         public Queue(int queueId, VkDevice device) {
             try (var stack = stackPush()) {

@@ -70,7 +70,7 @@ public class EntityBlasBuilder {
         }
         geometryBuffer.get().unmap();
 
-        VRef<VAccelerationStructure> blas = null;
+        VRef<VAccelerationStructure> blas;
         try (var stack = MemoryStack.stackPush()) {
             int[] primitiveCounts = new int[infos.size()];
             var buildInfo = populateBuildStructs(ctx, stack, cmd, infos, primitiveCounts);
@@ -156,7 +156,7 @@ public class EntityBlasBuilder {
 
         vkCmdBuildAccelerationStructuresKHR(cmd.buffer(), buildInfos, stack.pointers(buildRanges));
 
-        vkCmdPipelineBarrier(cmd.buffer(), VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1)
+        vkCmdPipelineBarrier(cmd.buffer(), VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, VkMemoryBarrier.calloc(1, stack)
                 .sType$Default()
                 .srcAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR)
                 .dstAccessMask(VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR), null, null);
