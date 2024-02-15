@@ -176,7 +176,7 @@ public class MemoryManager {
             int glId = glCreateBuffers();
             glNamedBufferStorageMemEXT(glId, size, memoryObject, alloc.ai.offset());
             _CHECK_GL_ERROR_();
-            return VGBuffer.create(alloc, glId);
+            return VGBuffer.create(alloc, usage, glId);
         }
     }
 
@@ -267,7 +267,7 @@ public class MemoryManager {
                             .usage(VMA_MEMORY_USAGE_AUTO)
                             .requiredFlags(properties),
                     alignment);
-            return VBuffer.create(alloc);
+            return VBuffer.create(alloc, usage);
         }
     }
 
@@ -302,6 +302,21 @@ public class MemoryManager {
                             .type(type)
                             .size(size)
                             .buffer(buffer.get().buffer()), null, pAccelerationStructure),
+                    "Failed to create acceleration acceleration structure");
+            return VAccelerationStructure.create(device, pAccelerationStructure.get(0), buffer);
+        }
+    }
+
+    public VRef<VAccelerationStructure> createAcceleration(VRef<VBuffer> buffer, long offset, long size, int type) {
+        try (var stack = stackPush()) {
+            LongBuffer pAccelerationStructure = stack.mallocLong(1);
+            _CHECK_(vkCreateAccelerationStructureKHR(device, VkAccelerationStructureCreateInfoKHR
+                            .calloc(stack)
+                            .sType$Default()
+                            .type(type)
+                            .size(size)
+                            .buffer(buffer.get().buffer())
+                            .offset(offset), null, pAccelerationStructure),
                     "Failed to create acceleration acceleration structure");
             return VAccelerationStructure.create(device, pAccelerationStructure.get(0), buffer);
         }

@@ -10,14 +10,14 @@ import static org.lwjgl.opengl.GL15C.glDeleteBuffers;
 public class VGBuffer extends VBuffer {
     public final int glId;
     private final long vkMemory;
-    protected VGBuffer(VmaAllocator.BufferAllocation allocation, int glId) {
-        super(allocation);
+    protected VGBuffer(VmaAllocator.BufferAllocation allocation, int usage, int glId) {
+        super(allocation, usage);
         this.glId = glId;
         this.vkMemory = allocation.ai.deviceMemory();
     }
 
-    public static VRef<VGBuffer> create(VmaAllocator.BufferAllocation allocation, int glId) {
-        return new VRef<>(new VGBuffer(allocation, glId));
+    public static VRef<VGBuffer> create(VmaAllocator.BufferAllocation allocation, int usage, int glId) {
+        return new VRef<>(new VGBuffer(allocation, usage, glId));
     }
 
     @Override

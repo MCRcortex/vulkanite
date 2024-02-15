@@ -5,14 +5,19 @@ import java.util.concurrent.atomic.AtomicLong;
 public abstract class VObject {
     protected abstract void free();
 
-    private final AtomicLong refCount = new AtomicLong(0);
+    protected final AtomicLong refCount = new AtomicLong(0);
     protected void incRef() {
-        refCount.incrementAndGet();
+        if (refCount.incrementAndGet() == 1) {
+            // First reference, put into registry
+            // So that the object is kept alive until we finish running `free()`
+            VRegistry.INSTANCE.register(this);
+        }
     }
 
     protected void decRef() {
         if (refCount.decrementAndGet() == 0) {
             free();
+            VRegistry.INSTANCE.unregister(this);
         }
     }
 }

@@ -7,13 +7,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class VDescriptorSet extends VObject {
-    private final VDescriptorPool pool;
+    private final VRef<VDescriptorPool> pool;
     public final long poolHandle;
     public final long set;
 
     public Map<Integer, VRef<VObject>> refs = new HashMap<>();
 
-    protected VDescriptorSet(VDescriptorPool pool, long poolHandle, long set) {
+    protected VDescriptorSet(VRef<VDescriptorPool> pool, long poolHandle, long set) {
         this.pool = pool;
         this.poolHandle = poolHandle;
         this.set = set;
@@ -21,6 +21,6 @@ public class VDescriptorSet extends VObject {
 
     @Override
     protected void free() {
-        pool.freeSet(this);
+        pool.get().freeSet(this);
     }
 }

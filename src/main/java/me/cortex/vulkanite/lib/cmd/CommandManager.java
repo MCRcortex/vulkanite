@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK12.vkGetSemaphoreCounterValue;
 import static org.lwjgl.vulkan.VK12.vkWaitSemaphores;
 
 //Manages multiple command queues and fence synchronizations
@@ -55,6 +56,7 @@ public class CommandManager {
     public void submitOnceAndWait(int queueId, final VRef<VCmdBuff> cmdBuff) {
         long exec = this.submit(queueId, cmdBuff);
         this.hostWaitForExecution(queueId, exec);
+        cmdBuff.close();
     }
 
     public void executeWait(Consumer<VCmdBuff> cmdbuf) {
@@ -99,6 +101,10 @@ public class CommandManager {
         waitQueue.collect();
     }
 
+    public long getQueueCurrentExecution(int queueId) {
+        return queues[queueId].getCurrentExecution();
+    }
+
     public long submit(int queueId, final VRef<VCmdBuff> cmdBuff) {
         return submit(queueId, cmdBuff, null, null, null);
     }
@@ -115,7 +121,7 @@ public class CommandManager {
         queues[queue].collect();
     }
 
-    public synchronized void newFrame() {
+    public void newFrame() {
         for (var queue : queues) {
             queue.newFrame();
         }
@@ -126,7 +132,7 @@ public class CommandManager {
         public final Multimap<Integer, Long> waitingFor = Multimaps.synchronizedMultimap(HashMultimap.create());
         public final ConcurrentHashMap<Long, VRef<VCmdBuff>> submitted = new ConcurrentHashMap<>();
         public final VRef<VSemaphore> timelineSema;
-        public final Deque<Long> frameTimestamps = new ArrayDeque<>(3);
+//        public final Deque<Long> frameTimestamps = new ArrayDeque<>(3);
         public AtomicLong timeline = new AtomicLong(1);
         public long completedTimestamp = 0;
 
@@ -153,17 +159,25 @@ public class CommandManager {
         }
 
         public void newFrame() {
-            if (frameTimestamps.size() >= 3) {
-                long oldest = frameTimestamps.removeFirst();
-                completedTimestamp = Long.max(completedTimestamp, oldest);
-            }
-            frameTimestamps.addLast(completedTimestamp);
+//            if (frameTimestamps.size() >= 3) {
+//                long oldest = frameTimestamps.removeFirst();
+//                completedTimestamp = Long.max(completedTimestamp, oldest);
+//            }
+//            frameTimestamps.addLast(completedTimestamp);
+            completedTimestamp = Long.max(completedTimestamp, getCurrentExecution());
 
             collect();
         }
 
         public void collect() {
             synchronized (this) {
+                for (var entry : submitted.entrySet()) {
+                    if (entry.getKey() <= completedTimestamp) {
+                        // We know it's gone, we can early-close it
+                        // So that we don't need to wait for GC
+                        entry.getValue().close();
+                    }
+                }
                 for (var key : submitted.keySet()) {
                     if (key <= completedTimestamp) {
                         submitted.remove(key);
@@ -177,6 +191,7 @@ public class CommandManager {
 
             synchronized (this) {
                 waitingFor.clear();
+                submitted.forEach((k, v) -> v.close());
                 submitted.clear();
                 completedTimestamp = timeline.get() - 1;
             }
@@ -260,6 +275,14 @@ public class CommandManager {
             }
 
             return t;
+        }
+
+        public long getCurrentExecution() {
+            try (var stack = stackPush()) {
+                var lp = stack.longs(0);
+                vkGetSemaphoreCounterValue(queue.getDevice(), timelineSema.get().address(), lp);
+                return lp.get(0);
+            }
         }
     }
 }

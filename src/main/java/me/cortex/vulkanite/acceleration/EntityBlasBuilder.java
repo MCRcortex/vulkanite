@@ -65,6 +65,7 @@ public class EntityBlasBuilder {
             MemoryUtil.memCopy(MemoryUtil.memAddress(pair.getRight().getVertexBuffer()), ptr + offset, pair.getRight().getVertexBuffer().remaining());
             infos.add(new BuildInfo(pair.getRight().getParameters().format(), pair.getRight().getParameters().indexCount()/6, geometryBuffer.get().deviceAddress() + offset));
 
+            cmd.addBufferRef(geometryBuffer);
 
             offset += pair.getRight().getVertexBuffer().remaining();
         }
@@ -86,7 +87,8 @@ public class EntityBlasBuilder {
         var geometryInfos = VkAccelerationStructureGeometryKHR.calloc(geometries.size(), stack);
         int i = 0;
         for (var geometry : geometries) {
-            VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(ctx, cmdBuff, geometry.quadCount);
+            var indexBuffer = SharedQuadVkIndexBuffer.getIndexBuffer(ctx, cmdBuff, geometry.quadCount);
+            VkDeviceOrHostAddressConstKHR indexData = indexBuffer.get().deviceAddressConst();
             int indexType = SharedQuadVkIndexBuffer.TYPE;
 
             VkDeviceOrHostAddressConstKHR vertexData = VkDeviceOrHostAddressConstKHR.calloc(stack).deviceAddress(geometry.address);
@@ -110,6 +112,8 @@ public class EntityBlasBuilder {
             //        .flags(geometry.geometryFlags)
             ;
             primitiveCounts[i++] = (geometry.quadCount * 2);
+
+            cmdBuff.addBufferRef(indexBuffer);
         }
         geometryInfos.rewind();
         return geometryInfos;

@@ -12,6 +12,7 @@ import me.cortex.vulkanite.lib.cmd.VCmdBuff;
 import me.cortex.vulkanite.lib.cmd.VCommandPool;
 import me.cortex.vulkanite.lib.descriptors.DescriptorSetLayoutBuilder;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
+import me.cortex.vulkanite.lib.memory.PoolLinearAllocator;
 import me.cortex.vulkanite.lib.memory.VAccelerationStructure;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.other.VQueryPool;
@@ -136,7 +137,16 @@ public class AccelerationBlasBuilder {
     private void run() {
         MemoryStack bigStack = MemoryStack.create(20_000_000);
 
+        var buildBufferAllocator = new PoolLinearAllocator(context, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+                | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, 0x200_0000L, 16);
+        var scratchAllocator = new PoolLinearAllocator(context, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                0x200_0000L, 256);
+        var initialASBufferAllocator = new PoolLinearAllocator(context, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR,
+                0x200_0000L, 256);
+
         List<BLASBuildJob> jobs = new ArrayList<>();
+        Deque<Long> priorExecutions = new ArrayDeque<>(3);
         while (true) {
             {
                 jobs.clear();
@@ -188,35 +198,19 @@ public class AccelerationBlasBuilder {
                     var maxPrims = stack.callocInt(job.geometries.size());
                     buildRanges.put(brs);
 
-                    long buildBufferSize = 0;
-
-                    int vertexStride = 4 * 3;
-                    for (var geometry : job.geometries) {
-                        buildBufferSize += geometry.quadCount * 4L * vertexStride;
-                    }
-
-                    if (buildBufferSize <= 0) {
-                        throw new IllegalStateException("Build buffer size <= 0");
-                    }
-
-                    var buildBuffer = context.memory.createBuffer(buildBufferSize,
-                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
-                                    | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-                                    | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                            0, 0);
-                    buildBuffer.get().setDebugUtilsObjectName("BLAS geometry buffer");
-                    var buildBufferAddr = buildBuffer.get().deviceAddress();
-                    long buildBufferOffset = 0;
-
-                    uploadBuildCmd.encodeBufferBarrier(buildBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+                    long vertexStride = 4 * 3;
 
                     for (int geoIdx = 0; geoIdx < job.geometries.size(); geoIdx++) {
                         var geometry = job.geometries.get(geoIdx);
                         //TODO: Fill in geometryInfo, maxPrims and buildRangeInfo
                         var geometryInfo = geometryInfos.get().sType$Default();
                         var br = brs.get();
+
+                        long buildBufferSize = geometry.quadCount * 4L * vertexStride;
+                        var buildBuffer = buildBufferAllocator.allocate(buildBufferSize);
+
+                        uploadBuildCmd.encodeBufferBarrier(buildBuffer.buffer(), buildBuffer.offset(), buildBuffer.size(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
                         // We know the geometry data has been uploaded
                         // 0: n_vertices
@@ -226,7 +220,7 @@ public class AccelerationBlasBuilder {
                         var geometryInputBuffer = job.data.geometryBuffers().get(geoIdx);
                         pushConstant[0] = geometry.quadCount * 4L;
                         pushConstant[1] = geometryInputBuffer.get().deviceAddress();
-                        pushConstant[2] = buildBufferAddr + buildBufferOffset;
+                        pushConstant[2] = buildBuffer.deviceAddress();
                         if (pushConstant[1] == 0) {
                             throw new IllegalStateException("Geometry input buffer address is 0");
                         }
@@ -238,13 +232,19 @@ public class AccelerationBlasBuilder {
                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
                         uploadBuildCmd.dispatch(Math.min((geometry.quadCount * 4 + 255) / 256, 256), 1, 1);
 
-                        VkDeviceOrHostAddressConstKHR indexData = SharedQuadVkIndexBuffer.getIndexBuffer(context,
+                        uploadBuildCmd.encodeBufferBarrier(buildBuffer.buffer(), buildBuffer.offset(), buildBuffer.size(), VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
+
+                        var indexBuffer = SharedQuadVkIndexBuffer.getIndexBuffer(context,
                                 uploadBuildCmd,
                                 Integer.max(geometry.quadCount, 30000));
+                        VkDeviceOrHostAddressConstKHR indexData = indexBuffer.get().deviceAddressConst();
                         int indexType = SharedQuadVkIndexBuffer.TYPE;
 
+                        uploadBuildCmd.addBufferRef(indexBuffer);
+
                         VkDeviceOrHostAddressConstKHR vertexData = VkDeviceOrHostAddressConstKHR.calloc(stack)
-                                .deviceAddress(buildBufferAddr + buildBufferOffset);
+                                .deviceAddress(buildBuffer.deviceAddress());
                         int vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
 
                         geometryInfo.geometry(VkAccelerationStructureGeometryDataKHR.calloc(stack)
@@ -265,12 +265,8 @@ public class AccelerationBlasBuilder {
                         br.primitiveCount(geometry.quadCount * 2);
                         //maxPrims.put(2);
                         //br.primitiveCount(2);
-
-                        buildBufferOffset += geometry.quadCount * 4L * vertexStride;
                     }
 
-                    uploadBuildCmd.encodeBufferBarrier(buildBuffer, 0, VK_WHOLE_SIZE, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
 
                     geometryInfos.rewind();
                     maxPrims.rewind();
@@ -294,21 +290,17 @@ public class AccelerationBlasBuilder {
                             buildSizesInfo);
 
 
-                    var structure = context.memory.createAcceleration(buildSizesInfo.accelerationStructureSize(), 256,
-                            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+                    var backingBuffer = initialASBufferAllocator.allocate(buildSizesInfo.accelerationStructureSize());
+                    var structure = context.memory.createAcceleration(backingBuffer.buffer(), backingBuffer.offset(), backingBuffer.size(), VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
 
-                    var scratch = context.memory.createBuffer(buildSizesInfo.buildScratchSize(),
-                            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 256, 0);
-                    scratch.get().setDebugUtilsObjectName("BLAS scratch buffer");
-
-                    bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.get().deviceAddress()));
+                    var scratch = scratchAllocator.allocate(buildSizesInfo.buildScratchSize());
+                    uploadBuildCmd.addBufferRef(scratch.buffer());
+                    bi.scratchData(VkDeviceOrHostAddressKHR.calloc(stack).deviceAddress(scratch.deviceAddress()));
                     bi.dstAccelerationStructure(structure.get().structure);
 
                     pAccelerationStructures.put(structure.get().structure);
 
                     accelerationStructures.add(structure);
-                    uploadBuildCmd.addBufferRef(scratch);
                 }
 
                 buildInfos.rewind();
@@ -333,6 +325,7 @@ public class AccelerationBlasBuilder {
 
                     // Waiting on a semaphore is realistically the easiest thing to do rn
                     context.cmd.hostWaitForExecution(asyncQueue, buildExecution);
+                    uploadBuildCmdRef.close();
                 }
 
                 long[] compactedSizes = queryPool.get().getResultsLong(jobs.size());
@@ -348,24 +341,36 @@ public class AccelerationBlasBuilder {
 
                     // Dont need a memory barrier cause submit ensures cache flushing already
                     for (int idx = 0; idx < compactedSizes.length; idx++) {
-                        var as = context.memory.createAcceleration(compactedSizes[idx], 256,
+                        var compact_as = context.memory.createAcceleration(compactedSizes[idx], 256,
                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR, VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
+                        var fat_as = accelerationStructures.get(idx);
 
                         vkCmdCopyAccelerationStructureKHR(cmdRef.get().buffer(), VkCopyAccelerationStructureInfoKHR.calloc(stack).sType$Default()
-                                .src(accelerationStructures.get(idx).get().structure)
-                                .dst(as.get().structure)
+                                .src(fat_as.get().structure)
+                                .dst(compact_as.get().structure)
                                 .mode(VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR));
 
+                        cmdRef.get().addAccelerationStructureRef(fat_as);
+                        cmdRef.get().addAccelerationStructureRef(compact_as);
+                        fat_as.close();
+
                         var job = jobs.get(idx);
-                        results.add(new BLASBuildResult(as, job.data));
+                        results.add(new BLASBuildResult(compact_as, job.data));
                     }
 
                     blasExecution = context.cmd.submit(asyncQueue, cmdRef);
+                    cmdRef.close();
                 }
+
+                accelerationStructures.forEach(VRef::close);
 
                 resultConsumer.accept(new BLASBatchResult(results, blasExecution));
 
-                context.cmd.hostWaitForExecution(asyncQueue, blasExecution);
+                priorExecutions.add(blasExecution);
+                if (priorExecutions.size() > 3) {
+                    long prior = priorExecutions.poll();
+                    context.cmd.hostWaitForExecution(asyncQueue, prior);
+                }
             }
         }
     }
@@ -423,6 +428,7 @@ public class AccelerationBlasBuilder {
             // Should we move all uploads to the worker?
             context.cmd.submitOnceAndWait(1, cmd);
         }
+        cmd.close();
 
         if (jobs.isEmpty()) {
             return; // No jobs to do

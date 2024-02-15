@@ -11,12 +11,13 @@ import static org.lwjgl.vulkan.VK10.VK_WHOLE_SIZE;
 public class VBuffer extends VObject {
     private VmaAllocator.BufferAllocation allocation;
     private final VkDeviceOrHostAddressConstKHR deviceAddressConst;
+    private final int usage;
 
-    public static VRef<VBuffer> create(VmaAllocator.BufferAllocation allocation) {
-        return new VRef<>(new VBuffer(allocation));
+    public static VRef<VBuffer> create(VmaAllocator.BufferAllocation allocation, int usage) {
+        return new VRef<>(new VBuffer(allocation, usage));
     }
 
-    protected VBuffer(VmaAllocator.BufferAllocation allocation) {
+    protected VBuffer(VmaAllocator.BufferAllocation allocation, int usage) {
         this.allocation = allocation;
         if (allocation.deviceAddress != -1) {
             this.deviceAddressConst = VkDeviceOrHostAddressConstKHR.calloc()
@@ -24,15 +25,24 @@ public class VBuffer extends VObject {
         } else {
             this.deviceAddressConst = null;
         }
+        this.usage = usage;
     }
 
     public long buffer() {
         return allocation.buffer;
     }
 
+    public int usage() {
+        return usage;
+    }
+
     protected void free() {
         allocation.free();
         allocation = null;
+    }
+
+    public boolean hasDeviceAddress() {
+        return allocation.deviceAddress != -1;
     }
 
     public long deviceAddress() {

@@ -19,12 +19,12 @@ public class SharedQuadVkIndexBuffer {
     private static VRef<VBuffer> indexBuffer = null;
     private static int currentQuadCount = 0;
 
-    public synchronized static VkDeviceOrHostAddressConstKHR getIndexBuffer(VContext context, VCmdBuff uploaCmdBuff, int quadCount) {
+    public synchronized static VRef<VBuffer> getIndexBuffer(VContext context, VCmdBuff uploaCmdBuff, int quadCount) {
         if (currentQuadCount < quadCount) {
             makeNewIndexBuffer(context, uploaCmdBuff, quadCount);
         }
 
-        return indexBuffer.get().deviceAddressConst();
+        return indexBuffer.addRef();
     }
 
     private static void makeNewIndexBuffer(VContext context, VCmdBuff uploaCmdBuff, int quadCount) {

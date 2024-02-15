@@ -59,7 +59,7 @@ public class VCommandPool extends VObject {
                     "Failed to create command buffer");
             List<VRef<VCmdBuff>> buffers = new ArrayList<>();
             for (int i = 0; i < count; i++) {
-                buffers.add(new VRef<>(new VCmdBuff(this, new VkCommandBuffer(pCommandBuffer.get(i), device), flags)));
+                buffers.add(new VRef<>(new VCmdBuff(new VRef<>(this), new VkCommandBuffer(pCommandBuffer.get(i), device), flags)));
             }
             return buffers;
         }

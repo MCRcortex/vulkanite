@@ -32,7 +32,7 @@ public class SharedImageViewTracker {
 
     public VRef<VImageView> getView(Supplier<VRef<VGImage>> imageSupplier) {
         VRef<VGImage> image = imageSupplier.get();
-        if (view == null || view.get().isDerivedFrom(image.get())) {
+        if (view == null || (!view.get().isDerivedFrom(image.get()))) {
             //TODO: move this to like a fence free that you pass in via an arg
             if (image != null) {
                 view = VImageView.create(ctx, new VRef<>(image.get()));

@@ -184,9 +184,13 @@ public class AccelerationTLASManager {
                     buildInfo,
                     stack.pointers(buildRanges));
             cmd.addBufferRef(scratchBuffer);
+            scratchBuffer.close();
 
             cmd.encodeMemoryBarrier();
 
+            if (currentTLAS != null) {
+                currentTLAS.close();
+            }
             currentTLAS = tlas;
         }
     }
@@ -326,7 +330,6 @@ public class AccelerationTLASManager {
         }
 
         private VRef<VDescriptorSetLayout> geometryBufferSetLayout;
-        private VRef<VDescriptorPool> geometryBufferDescPool;
         private VRef<VDescriptorSet> geometryBufferDescSet = null;
 
         private int setCapacity = 0;
@@ -339,7 +342,6 @@ public class AccelerationTLASManager {
 
         private final ConcurrentLinkedDeque<DescUpdateJob> descUpdateJobs = new ConcurrentLinkedDeque<>();
         private final ConcurrentLinkedDeque<ArenaDeallocJob> arenaDeallocJobs = new ConcurrentLinkedDeque<>();
-        private final Deque<VRef<VDescriptorPool>> descPoolsToRelease = new ArrayDeque<>();
 
         public void resizeBindlessSet(int newSize) {
             if (geometryBufferSetLayout == null) {
@@ -355,8 +357,8 @@ public class AccelerationTLASManager {
 
             if (newSize > setCapacity) {
                 int newCapacity = roundUpPow2(Math.max(newSize, 32));
-                var newGeometryBufferDescPool = VDescriptorPool.create(context, geometryBufferSetLayout, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT, newCapacity);
-                var newGeometryBufferDescSet = newGeometryBufferDescPool.get().allocateSet(newCapacity);
+                var geometryBufferDescPool = VDescriptorPool.create(context, geometryBufferSetLayout, VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT, newCapacity);
+                var newGeometryBufferDescSet = geometryBufferDescPool.get().allocateSet(newCapacity);
 
                 System.out.println("New geometry desc set: " + Long.toHexString(newGeometryBufferDescSet.get().set)
                         + " with capacity " + newCapacity);
@@ -371,11 +373,8 @@ public class AccelerationTLASManager {
                                 .descriptorCount(setCapacity);
                         vkUpdateDescriptorSets(context.device, null, setCopy);
                     }
-
-                    descPoolsToRelease.add(geometryBufferDescPool);
                 }
 
-                geometryBufferDescPool = newGeometryBufferDescPool;
                 geometryBufferDescSet = newGeometryBufferDescSet;
                 setCapacity = newCapacity;
             }
@@ -429,9 +428,9 @@ public class AccelerationTLASManager {
             while (!arenaDeallocJobs.isEmpty()) {
                 var job = arenaDeallocJobs.poll();
                 arena.free(job.index, job.count);
+                job.geometryBuffers.forEach(VRef::close);
                 job.geometryBuffers.clear();
             }
-            descPoolsToRelease.clear();
         }
 
         public void update(AccelerationBlasBuilder.BLASBuildResult result) {
@@ -519,7 +518,7 @@ public class AccelerationTLASManager {
     }
 
     public VRef<VDescriptorSet> getGeometrySet() {
-        return buildDataManager.geometryBufferDescSet;
+        return buildDataManager.geometryBufferDescSet.addRef();
     }
 
     public VRef<VDescriptorSetLayout> getGeometryLayout() {

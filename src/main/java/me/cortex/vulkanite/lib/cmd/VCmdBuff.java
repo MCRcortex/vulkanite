@@ -30,7 +30,7 @@ import java.util.*;
 
 //TODO: Track with TrackedResourceObject but need to be careful due to how the freeing works
 public class VCmdBuff extends VObject {
-    private final VCommandPool pool;
+    private final VRef<VCommandPool> pool;
     private VkCommandBuffer buffer;
 
     @SuppressWarnings("FieldCanBeLocal")
@@ -52,7 +52,7 @@ public class VCmdBuff extends VObject {
         refs.add(accelerationStructure.addRefGeneric());
     }
 
-    protected VCmdBuff(VCommandPool pool, VkCommandBuffer buff, int flags) {
+    protected VCmdBuff(VRef<VCommandPool> pool, VkCommandBuffer buff, int flags) {
         this.pool = pool;
         this.buffer = buff;
 
@@ -157,6 +157,8 @@ public class VCmdBuff extends VObject {
 
         addBufferRef(staging);
         addBufferRef(dest);
+
+        staging.close();
     }
 
     public void encodeImageUpload(MemoryManager manager, long src, final VRef<VImage> dest, long srcSize, int destLayout) {
@@ -179,6 +181,8 @@ public class VCmdBuff extends VObject {
 
         addBufferRef(staging);
         addImageRef(dest);
+
+        staging.close();
     }
 
     public void encodeMemoryBarrier() {
@@ -287,7 +291,8 @@ public class VCmdBuff extends VObject {
     }
 
     protected void free() {
-        vkFreeCommandBuffers(pool.device, pool.pool, buffer);
+        vkFreeCommandBuffers(pool.get().device, pool.get().pool, buffer == null ? finalizedBuffer : buffer);
+        refs.forEach(VRef::close);
         refs.clear();
     }
 

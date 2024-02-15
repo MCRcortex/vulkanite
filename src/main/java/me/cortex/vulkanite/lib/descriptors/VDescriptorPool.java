@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK11.VK_ERROR_OUT_OF_POOL_MEMORY;
 
 public class VDescriptorPool extends VObject {
     private final VContext ctx;
@@ -22,22 +23,23 @@ public class VDescriptorPool extends VObject {
     private final VRef<VDescriptorSetLayout> layout;
     private final int flags;
 
-    private static final int nSetsPerPool = 16;
+    private final int nSetsPerPool;
     private final int countPerType;
 
-    private VDescriptorPool(VContext ctx, VRef<VDescriptorSetLayout> layout, int flags, int countPerType) {
+    private VDescriptorPool(VContext ctx, VRef<VDescriptorSetLayout> layout, int flags, int nSetsPerPool, int countPerType) {
         this.ctx = ctx;
         this.layout = layout.addRef();
         this.flags = flags;
         this.countPerType = countPerType;
+        this.nSetsPerPool = nSetsPerPool;
     }
 
     public static VRef<VDescriptorPool> create(VContext ctx, VRef<VDescriptorSetLayout> layout, int flags) {
-        return new VRef<>(new VDescriptorPool(ctx, layout, flags, 1));
+        return new VRef<>(new VDescriptorPool(ctx, layout, flags, 16, 1));
     }
 
     public static VRef<VDescriptorPool> create(VContext ctx, VRef<VDescriptorSetLayout> layout, int flags, int countPerType) {
-        return new VRef<>(new VDescriptorPool(ctx, layout, flags, countPerType));
+        return new VRef<>(new VDescriptorPool(ctx, layout, flags, 1, countPerType));
     }
 
     private void createNewPool() {
@@ -76,10 +78,15 @@ public class VDescriptorPool extends VObject {
                         .pDescriptorCounts(stack.ints(variableSize));
                 allocInfo.pNext(variableCountInfo.address());
             }
-            _CHECK_(vkAllocateDescriptorSets(ctx.device, allocInfo, pSet));
+            int result = vkAllocateDescriptorSets(ctx.device, allocInfo, pSet);
+            if (result == VK_ERROR_OUT_OF_POOL_MEMORY) {
+                createNewPool();
+                return allocateSet(variableSize);
+            }
+            _CHECK_(result);
             set = pSet.get(0);
         }
-        return new VRef<>(new VDescriptorSet(this, pool, set));
+        return new VRef<>(new VDescriptorSet(new VRef<>(this), pool, set));
     }
 
     public VRef<VDescriptorSet> allocateSet() {
