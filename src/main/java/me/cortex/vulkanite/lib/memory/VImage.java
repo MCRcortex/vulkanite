@@ -1,8 +1,15 @@
 package me.cortex.vulkanite.lib.memory;
 
+import me.cortex.vulkanite.client.Vulkanite;
+import me.cortex.vulkanite.lib.base.VObject;
+import me.cortex.vulkanite.lib.base.VRef;
+
 import java.lang.ref.Cleaner;
 
-public class VImage {
+import static org.lwjgl.vulkan.VK10.VK_OBJECT_TYPE_BUFFER;
+import static org.lwjgl.vulkan.VK10.VK_OBJECT_TYPE_IMAGE;
+
+public class VImage extends VObject {
     protected VmaAllocator.ImageAllocation allocation;
     public final int width;
     public final int height;
@@ -12,7 +19,7 @@ public class VImage {
 
     public final int dimensions;
 
-    VImage(VmaAllocator.ImageAllocation allocation, int width, int height, int depth, int mipLayers, int format) {
+    protected VImage(VmaAllocator.ImageAllocation allocation, int width, int height, int depth, int mipLayers, int format) {
         this.allocation = allocation;
         this.width = width;
         this.height = height;
@@ -32,12 +39,20 @@ public class VImage {
         this.dimensions = dimensions;
     }
 
-    public void free() {
+    public static VRef<VImage> create(VmaAllocator.ImageAllocation allocation, int width, int height, int depth, int mipLayers, int format) {
+        return new VRef<>(new VImage(allocation, width, height, depth, mipLayers, format));
+    }
+
+    protected void free() {
         allocation.free();
         allocation = null;
     }
 
     public long image() {
         return allocation.image;
+    }
+
+    public void setDebugUtilsObjectName(String name) {
+        Vulkanite.INSTANCE.getCtx().setDebugUtilsObjectName(image(), VK_OBJECT_TYPE_IMAGE, name);
     }
 }

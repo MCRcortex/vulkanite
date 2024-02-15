@@ -38,8 +38,8 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-rendering-data-attachment-v1:0.3.38+73761d2e9a")
     modImplementation(fabricApi.module("fabric-resource-loader-v0", project.fabric_version))
 
-    modImplementation "maven.modrinth:sodium:mc1.20.2-0.5.3"
-    modImplementation "maven.modrinth:iris:1.6.9+1.20.2"
+    modImplementation "maven.modrinth:sodium:mc1.20.2-0.5.5"
+    modImplementation "maven.modrinth:iris:1.6.14+1.20.2"
 
     modRuntimeOnly 'org.anarres:jcpp:1.4.14'
     modRuntimeOnly 'io.github.douira:glsl-transformer:2.0.0-pre13'

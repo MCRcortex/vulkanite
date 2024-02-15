@@ -1,14 +1,15 @@
 package me.cortex.vulkanite.lib.shader;
 
+import me.cortex.vulkanite.lib.base.VRef;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkPipelineShaderStageCreateInfo;
 
 public record ShaderModule(
-        VShader shader, String name) {
+        VRef<VShader> shader, String name) {
     public void setupStruct(MemoryStack stack, VkPipelineShaderStageCreateInfo struct) {
         struct.sType$Default()
-                .stage(shader.stage)
-                .module(shader.module)
+                .stage(shader.get().stage)
+                .module(shader.get().module)
                 .pName(stack.UTF8(name));
     }
 }

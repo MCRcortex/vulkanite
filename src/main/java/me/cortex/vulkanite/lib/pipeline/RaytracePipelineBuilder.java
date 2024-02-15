@@ -1,6 +1,7 @@
 package me.cortex.vulkanite.lib.pipeline;
 
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.descriptors.VDescriptorSetLayout;
 import me.cortex.vulkanite.lib.memory.VBuffer;
 import me.cortex.vulkanite.lib.shader.ShaderModule;
@@ -58,20 +59,20 @@ public class RaytracePipelineBuilder {
         return this;
     }
 
-    ArrayList<VDescriptorSetLayout> layouts = new ArrayList<>();
-    public RaytracePipelineBuilder addLayout(VDescriptorSetLayout layout) {
+    List<VRef<VDescriptorSetLayout>> layouts = new ArrayList<>();
+    public RaytracePipelineBuilder addLayout(VRef<VDescriptorSetLayout> layout) {
         layouts.add(layout);
         return this;
     }
 
     //TODO: generate stb
-    public VRaytracePipeline build(VContext context, int maxDepth) {
+    public VRef<VRaytracePipeline> build(VContext context, int maxDepth) {
         shaders.add(gen);
 
         ArrayList<ShaderReflection> reflections = new ArrayList<>();
         ShaderReflection reflection = null;
         for (var shader : shaders) {
-            reflections.add(shader.shader().getReflection());
+            reflections.add(shader.shader().get().getReflection());
         }
         try {
             reflection = ShaderReflection.mergeStages(reflections.toArray(ShaderReflection[]::new));
@@ -136,7 +137,7 @@ public class RaytracePipelineBuilder {
 
             {
                 //TODO: cleanup and add push constants
-                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(a->a.layout).toArray()));
+                layoutCreateInfo.pSetLayouts(stack.longs(layouts.stream().mapToLong(a->a.get().layout).toArray()));
             }
 
             LongBuffer pLayout = stack.mallocLong(1);
@@ -183,12 +184,14 @@ public class RaytracePipelineBuilder {
                 long aHandles = MemoryUtil.memAddress(handles);
 
                 //TODO/FIXME: add alignment to gpu buffer
-                VBuffer sbtMap = context.memory.createBuffer(sbtSize,
+                VRef<VBuffer> sbtMapRef = context.memory.createBuffer(sbtSize,
                         VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                                 VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR |
                                 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR,
                         VK_MEMORY_HEAP_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
                         0, VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT);
+                VBuffer sbtMap = sbtMapRef.get();
+                sbtMap.setDebugUtilsObjectName("SBT");
                 long ptr = sbtMap.map();
 
                 // Groups in order of RayGen, Miss Groups, Hit Groups, and callable
@@ -214,14 +217,14 @@ public class RaytracePipelineBuilder {
                 sbtMap.unmap();
                 sbtMap.flush();
 
-                return new VRaytracePipeline(context, pPipeline.get(0), pLayout.get(0), sbtMap,
+                return new VRef<>(new VRaytracePipeline(context, pPipeline.get(0), pLayout.get(0), sbtMapRef,
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + rgenBase, handleSizeAligned, handleSizeAligned),
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + missGroupBase, handleSizeAligned, handleSizeAligned * missGroupCount),
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + hitGroupsBase, handleSizeAligned, handleSizeAligned * hitGroupsCount),
                         VkStridedDeviceAddressRegionKHR.calloc().set(sbtMap.deviceAddress() + callGroupBase, handleSizeAligned, handleSizeAligned * callGroupCount),
                         shaders,
                         reflection
-                );
+                ));
             }
         }
     }

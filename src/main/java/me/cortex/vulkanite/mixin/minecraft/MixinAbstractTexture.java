@@ -2,6 +2,7 @@ package me.cortex.vulkanite.mixin.minecraft;
 
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVGImage;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import net.minecraft.client.texture.AbstractTexture;
 import org.spongepowered.asm.mixin.Mixin;
@@ -15,16 +16,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(AbstractTexture.class)
 public class MixinAbstractTexture implements IVGImage {
     @Shadow protected int glId;
-    @Unique private VGImage vgImage;
+    @Unique private VRef<VGImage> vgImage;
 
     @Override
-    public void setVGImage(VGImage image) {
+    public void setVGImage(VRef<VGImage> image) {
         this.vgImage = image;
     }
 
     @Override
-    public VGImage getVGImage() {
-        return vgImage;
+    public VRef<VGImage> getVGImage() {
+        return vgImage == null ? null : vgImage;
     }
 
     @Inject(method = "getGlId", at = @At("HEAD"), cancellable = true)
@@ -33,7 +34,7 @@ public class MixinAbstractTexture implements IVGImage {
             if (glId != -1) {
                 throw new IllegalStateException("glId != -1 while VGImage is set");
             }
-            cir.setReturnValue(vgImage.glId);
+            cir.setReturnValue(vgImage.get().glId);
             cir.cancel();
         }
     }
@@ -41,7 +42,6 @@ public class MixinAbstractTexture implements IVGImage {
     @Inject(method = "clearGlId", at = @At("HEAD"), cancellable = true)
     private void redirectClear(CallbackInfo ci) {
         if (vgImage != null) {
-            Vulkanite.INSTANCE.addSyncedCallback(vgImage::free);
             vgImage = null;
             glId = -1;
             ci.cancel();

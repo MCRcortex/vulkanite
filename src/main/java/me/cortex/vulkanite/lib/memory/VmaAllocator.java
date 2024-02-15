@@ -1,7 +1,6 @@
 package me.cortex.vulkanite.lib.memory;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
-
+import me.cortex.vulkanite.lib.base.VObject;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -101,6 +100,7 @@ public class VmaAllocator {
                             .set(device.getPhysicalDevice().getInstance(), device))
                     .vulkanApiVersion(VK_API_VERSION_1_2)
                     .flags(enableDeviceAddresses ? VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT : 0);
+            allocatorCreateInfo.flags(allocatorCreateInfo.flags() | VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT);
 
             PointerBuffer pAllocator = stack.pointers(0);
             if (vmaCreateAllocator(allocatorCreateInfo, pAllocator) != VK_SUCCESS) {
@@ -210,6 +210,9 @@ public class VmaAllocator {
 
     BufferAllocation alloc(long pool, VkBufferCreateInfo bufferCreateInfo, VmaAllocationCreateInfo allocationCreateInfo,
             long alignment) {
+        if (bufferCreateInfo.size() == 0) {
+            throw new RuntimeException("Buffer size must be greater than 0");
+        }
         try (var stack = stackPush()) {
             LongBuffer pb = stack.mallocLong(1);
             PointerBuffer pa = stack.mallocPointer(1);
@@ -272,7 +275,7 @@ public class VmaAllocator {
         }
     }
 
-    public abstract static class Allocation extends TrackedResourceObject {
+    public abstract static class Allocation extends VObject {
         public final VmaAllocationInfo ai;
         public final long allocation;
 
@@ -282,8 +285,7 @@ public class VmaAllocator {
             this.allocation = allocation;
         }
 
-        public void free() {
-            free0();
+        protected void free() {
             // vmaFreeMemory(allocator, allocation);
             ai.free();
         }
@@ -297,7 +299,7 @@ public class VmaAllocator {
         public long buffer = 0;
         public final long deviceAddress;
 
-        public BufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress) {
+        protected BufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress) {
             super(allocation, info);
             this.buffer = buffer;
             if (hasDeviceAddresses && hasDeviceAddress) {
@@ -313,7 +315,7 @@ public class VmaAllocator {
         }
 
         @Override
-        public void free() {
+        protected void free() {
             // vkFreeMemory();
             vmaDestroyBuffer(allocator, buffer, allocation);
             super.free();
@@ -355,17 +357,16 @@ public class VmaAllocator {
     public class SharedBufferAllocation extends BufferAllocation {
         private final boolean dedicated;
 
-        public SharedBufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress,
+        protected SharedBufferAllocation(long buffer, long allocation, VmaAllocationInfo info, boolean hasDeviceAddress,
                 boolean dedicated) {
             super(buffer, allocation, info, hasDeviceAddress);
             this.dedicated = dedicated;
         }
 
         @Override
-        public void free() {
+        protected void free() {
             vkDestroyBuffer(device, buffer, null);
             vmaFreeMemory(allocator, allocation);
-            free0();
             ai.free();
         }
 
@@ -377,13 +378,13 @@ public class VmaAllocator {
     public class ImageAllocation extends Allocation {
         public final long image;
 
-        public ImageAllocation(long image, long allocation, VmaAllocationInfo info) {
+        protected ImageAllocation(long image, long allocation, VmaAllocationInfo info) {
             super(allocation, info);
             this.image = image;
         }
 
         @Override
-        public void free() {
+        protected void free() {
             // vkFreeMemory();
             vmaDestroyImage(allocator, image, allocation);
             super.free();
@@ -393,17 +394,16 @@ public class VmaAllocator {
     public class SharedImageAllocation extends ImageAllocation {
         private final boolean dedicated;
 
-        public SharedImageAllocation(long image, long allocation, VmaAllocationInfo info, boolean dedicated) {
+        protected SharedImageAllocation(long image, long allocation, VmaAllocationInfo info, boolean dedicated) {
             super(image, allocation, info);
             this.dedicated = dedicated;
         }
 
         @Override
-        public void free() {
+        protected void free() {
             // vkFreeMemory();
             vkDestroyImage(device, image, null);
             vmaFreeMemory(allocator, allocation);
-            free0();
             ai.free();
         }
 

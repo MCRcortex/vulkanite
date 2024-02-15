@@ -1,7 +1,8 @@
 package me.cortex.vulkanite.lib.shader;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+import me.cortex.vulkanite.lib.base.VObject;
 import me.cortex.vulkanite.lib.base.VContext;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.shader.reflection.ShaderReflection;
 import org.lwjgl.vulkan.VkShaderModuleCreateInfo;
 
@@ -14,7 +15,7 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
 import static org.lwjgl.vulkan.KHRRayTracingPipeline.*;
 import static org.lwjgl.vulkan.VK10.*;
 
-public class VShader extends TrackedResourceObject {
+public class VShader extends VObject {
     private final VContext ctx;
     public final long module;
     public final int stage;
@@ -24,7 +25,7 @@ public class VShader extends TrackedResourceObject {
         return reflection;
     }
 
-    public VShader(VContext ctx, long module, int stage, ShaderReflection reflection) {
+    private VShader(VContext ctx, long module, int stage, ShaderReflection reflection) {
         this.ctx = ctx;
         this.module = module;
         this.stage = stage;
@@ -36,10 +37,10 @@ public class VShader extends TrackedResourceObject {
     }
 
     public ShaderModule named(String name) {
-        return new ShaderModule(this, name);
+        return new ShaderModule(new VRef<>(this), name);
     }
 
-    public static VShader compileLoad(VContext ctx, String source, int stage) {
+    public static VRef<VShader> compileLoad(VContext ctx, String source, int stage) {
         try (var stack = stackPush()) {
             ByteBuffer code = ShaderCompiler.compileShader("shader", source, stage);
 
@@ -50,13 +51,12 @@ public class VShader extends TrackedResourceObject {
                     .pCode(code);
             LongBuffer pShaderModule = stack.mallocLong(1);
             _CHECK_(vkCreateShaderModule(ctx.device, createInfo, null, pShaderModule));
-            return new VShader(ctx, pShaderModule.get(0), stage, reflection);
+            return new VRef<>(new VShader(ctx, pShaderModule.get(0), stage, reflection));
         }
     }
 
     @Override
-    public void free() {
-        free0();
+    protected void free() {
         vkDestroyShaderModule(ctx.device, module, null);
     }
 }

@@ -1,10 +1,10 @@
 package me.cortex.vulkanite.lib.pipeline;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
 import me.cortex.vulkanite.lib.base.VContext;
-import me.cortex.vulkanite.lib.other.sync.VFence;
+import me.cortex.vulkanite.lib.base.VObject;
+import static org.lwjgl.vulkan.VK10.vkDestroyPipeline;
 
-public class VComputePipeline extends TrackedResourceObject {
+public class VComputePipeline extends VObject {
     private final VContext context;
     private final long pipeline;
     private final long layout;
@@ -25,6 +25,6 @@ public class VComputePipeline extends TrackedResourceObject {
 
     @Override
     public void free() {
-
+        vkDestroyPipeline(context.device, pipeline, null);
     }
 }

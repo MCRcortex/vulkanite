@@ -1,25 +1,24 @@
 package me.cortex.vulkanite.lib.memory;
 
-import me.cortex.vulkanite.lib.base.TrackedResourceObject;
+import me.cortex.vulkanite.lib.base.VObject;
+import me.cortex.vulkanite.lib.base.VRef;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkAccelerationStructureDeviceAddressInfoKHR;
 import org.lwjgl.vulkan.VkDevice;
 
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-
-import static me.cortex.vulkanite.lib.other.VUtil._CHECK_;
 import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 
-public class VAccelerationStructure extends TrackedResourceObject {
+public class VAccelerationStructure extends VObject {
     public final long structure;
-    public final VBuffer buffer;
+    @SuppressWarnings("FieldCanBeLocal")
+    private final VRef<VBuffer> buffer;
+
     public final long deviceAddress;
     private final VkDevice device;
 
-    VAccelerationStructure(VkDevice device, long structure, VBuffer buffer) {
+    protected VAccelerationStructure(VkDevice device, long structure, final VRef<VBuffer> buffer) {
         this.device = device;
-        this.buffer = buffer;
+        this.buffer = buffer.addRef();
         this.structure = structure;
         try (MemoryStack stack = MemoryStack.stackPush()){
             deviceAddress = vkGetAccelerationStructureDeviceAddressKHR(device,
@@ -30,9 +29,12 @@ public class VAccelerationStructure extends TrackedResourceObject {
         }
     }
 
+    public static VRef<VAccelerationStructure> create(VkDevice device, long structure, VRef<VBuffer> buffer) {
+        return new VRef<>(new VAccelerationStructure(device, structure, buffer));
+    }
+
     public void free() {
-        free0();
         vkDestroyAccelerationStructureKHR(device, structure, null);
-        buffer.free();
+        buffer.close();
     }
 }

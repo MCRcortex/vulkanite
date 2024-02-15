@@ -13,6 +13,7 @@ import static org.lwjgl.vulkan.KHRSurface.VK_ERROR_SURFACE_LOST_KHR;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_ERROR_OUT_OF_DATE_KHR;
 import static org.lwjgl.vulkan.KHRSwapchain.VK_SUBOPTIMAL_KHR;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK11.VK_ERROR_OUT_OF_POOL_MEMORY;
 
 public class VUtil {
     public static String translateVulkanResult(int result) {
@@ -38,6 +39,8 @@ public class VUtil {
                 return "A host memory allocation has failed.";
             case VK_ERROR_OUT_OF_DEVICE_MEMORY:
                 return "A device memory allocation has failed.";
+            case VK_ERROR_OUT_OF_POOL_MEMORY:
+                return "A descriptor pool memory allocation has failed.";
             case VK_ERROR_INITIALIZATION_FAILED:
                 return "Initialization of an object could not be completed for implementation-specific reasons.";
             case VK_ERROR_DEVICE_LOST:

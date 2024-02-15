@@ -3,6 +3,7 @@ package me.cortex.vulkanite.mixin.iris;
 import com.mojang.blaze3d.systems.RenderSystem;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVGImage;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.memory.VGImage;
 import me.cortex.vulkanite.lib.other.FormatConverter;
 import net.coderbot.iris.gl.IrisRenderSystem;
@@ -22,7 +23,7 @@ import static org.lwjgl.vulkan.VK10.*;
 
 @Mixin(value = GlTexture.class, remap = false)
 public abstract class MixinGlTexture extends MixinGlResource implements IVGImage {
-    @Unique private VGImage sharedImage;
+    @Unique private VRef<VGImage> sharedImage;
 
     @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/GlStateManager;_genTexture()I"))
     private static int redirectGen() {
@@ -52,14 +53,15 @@ public abstract class MixinGlTexture extends MixinGlResource implements IVGImage
                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
+        sharedImage.get().setDebugUtilsObjectName("GlTexture");
 
         Vulkanite.INSTANCE.getCtx().cmd.executeWait(cmdbuf -> {
-            cmdbuf.encodeImageTransition(sharedImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
+            cmdbuf.encodeImageTransition(new VRef<>(sharedImage.get()), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT, VK_REMAINING_MIP_LEVELS);
         });
 
-        this.setGlId(sharedImage.glId);
+        this.setGlId(sharedImage.get().glId);
 
-        return sharedImage.glId;
+        return sharedImage.get().glId;
     }
 
     @Redirect(method="<init>", at = @At(value = "INVOKE", target = "Lnet/coderbot/iris/gl/texture/TextureType;apply(IIIIIIILjava/nio/ByteBuffer;)V"))
@@ -85,10 +87,10 @@ public abstract class MixinGlTexture extends MixinGlResource implements IVGImage
     @Overwrite
     protected void destroyInternal(){
         glFinish();
-        sharedImage.free();
+        sharedImage = null;
     }
 
-    public VGImage getVGImage() {
-        return sharedImage;
+    public VRef<VGImage> getVGImage() {
+        return sharedImage == null ? null : sharedImage.addRef();
     }
 }

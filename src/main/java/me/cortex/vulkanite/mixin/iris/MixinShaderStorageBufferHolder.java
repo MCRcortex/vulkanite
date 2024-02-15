@@ -3,6 +3,7 @@ package me.cortex.vulkanite.mixin.iris;
 import com.mojang.blaze3d.platform.GlStateManager;
 import me.cortex.vulkanite.client.Vulkanite;
 import me.cortex.vulkanite.compat.IVGBuffer;
+import me.cortex.vulkanite.lib.base.VRef;
 import me.cortex.vulkanite.lib.memory.VGBuffer;
 import net.coderbot.iris.gl.IrisRenderSystem;
 import net.coderbot.iris.gl.buffer.ShaderStorageBuffer;
@@ -27,7 +28,7 @@ public class MixinShaderStorageBufferHolder {
         return true;
     }
 
-    private static VGBuffer alloc(int size) {
+    private static VRef<VGBuffer> alloc(int size) {
         return Vulkanite.INSTANCE.getCtx().memory.createSharedBuffer(size, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     }
 
